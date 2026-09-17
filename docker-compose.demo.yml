@@ -1,0 +1,15 @@
+services:
+  sandbox:
+    build:
+      context: .
+      dockerfile: services/sandbox/Dockerfile
+    ports:
+      - "8790:8790"
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m
+    mem_limit: 768m
+    cpus: 1.0
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
