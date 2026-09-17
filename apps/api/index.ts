@@ -1,0 +1,28 @@
+import { join } from 'node:path';
+import { createApiServer } from './server.js';
+import { RunService } from './runs/service.js';
+import { CredentialVault, FetchGitHubTransport, GitHubOAuthService, JsonFileProjectStore, RepositoryImportService } from '../../packages/core/github/index.js';
+import { VerificationOrchestrator } from '../../packages/core/orchestrator/index.js';
+
+function required(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} is required`);
+  return value;
+}
+
+const port = Number(process.env.PORT || 8787);
+const dataDir = process.env.VERIFIAI_DATA_DIR || './data';
+const transport = new FetchGitHubTransport();
+const vault = new CredentialVault();
+const oauth = new GitHubOAuthService({
+  clientId: required('GITHUB_CLIENT_ID'),
+  clientSecret: required('GITHUB_CLIENT_SECRET'),
+  callbackUrl: required('GITHUB_CALLBACK_URL'),
+  stateSecret: required('VERIFIAI_STATE_SECRET'),
+}, transport, vault);
+const importer = new RepositoryImportService(vault, transport, new JsonFileProjectStore(join(dataDir, 'projects.json')));
+
+// Adapter-owned tools are injected here during integration. Missing tools resolve to UNKNOWN, never false PASS.
+const runs = new RunService(new VerificationOrchestrator(new Map()));
+const server = createApiServer({ oauth, importer, runs });
+server.listen(port, '0.0.0.0', () => console.log(`VERIFIAI API listening on :${port}`));
