@@ -53,3 +53,33 @@ test('web demo exposes the complete flagship journey with no dead primary CTA', 
   assert.match(js, /FAILED/);
   assert.match(js, /VERIFIED/);
 });
+
+test('target runtime redacts secrets and returns structured healthy startup evidence', async () => {
+  const { TargetRuntime } = await import('../services/sandbox/target.mjs');
+  const runtime = new TargetRuntime();
+  const secret = 'demo-super-secret';
+  const build = await runtime.build({ command: `node -e "console.log(process.env.API_SECRET)"`, env: { API_SECRET: secret } });
+  assert.equal(build.ok, true);
+  assert.doesNotMatch(`${build.stdout}${build.stderr}`, new RegExp(secret));
+  assert.match(build.stdout, /REDACTED/);
+  const port = 19000 + Math.floor(Math.random() * 1000);
+  const started = await runtime.start({ command: `node -e "require('http').createServer((q,r)=>{r.end('ok')}).listen(${port})"`, env: { API_SECRET: secret } });
+  assert.equal(started.ok, true);
+  const health = await runtime.healthcheck(`http://127.0.0.1:${port}`, { timeoutMs: 3000 });
+  assert.equal(health.ok, true);
+  await runtime.stop();
+});
+
+test('observability sink stores structured evidence and raw artifacts by run', async () => {
+  const { EvidenceSink } = await import('../packages/observability/index.mjs');
+  const sink = new EvidenceSink({ root: '/tmp/verifiai-observability-test' });
+  await sink.reset();
+  const entry = await sink.record('run-observe', 'exp-1', { kind: 'runtime', source: 'sandbox', executed: true, payload: { status: 'healthy' } });
+  assert.equal(entry.runId, 'run-observe');
+  const artifact = await sink.writeArtifact('run-observe', 'stdout.log', 'healthy\n');
+  assert.match(artifact, /stdout\.log$/);
+  const entries = await sink.list('run-observe');
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].payload.status, 'healthy');
+  await sink.reset();
+});
