@@ -7,7 +7,14 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test dist/tests/*.test.js",
-    "check": "npm run typecheck && npm test",
-    "start:api": "node dist/apps/api/index.js"
+    "test:p0": "node --test tests-p0/*.test.mjs",
+    "demo:e2e": "node scripts/demo-e2e.mjs",
+    "check": "npm run typecheck && npm test && npm run test:p0 && npm run demo:e2e",
+    "start:api": "node dist/apps/api/index.js",
+    "start:sandbox": "node services/sandbox/server.mjs",
+    "start:web": "node scripts/serve-web.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
   }
 }
