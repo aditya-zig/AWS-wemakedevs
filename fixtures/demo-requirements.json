@@ -1,0 +1,5 @@
+[
+  "If the payment provider becomes unavailable, checkout must fail gracefully and preserve the user cart.",
+  "The health API should respond successfully.",
+  "Expired authentication must not allow protected actions."
+]

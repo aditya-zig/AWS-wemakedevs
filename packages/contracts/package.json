@@ -1,0 +1,8 @@
+{
+  "name": "@verifiai/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "../../dist/packages/contracts/src/index.js",
+  "types": "./src/index.ts"
+}
