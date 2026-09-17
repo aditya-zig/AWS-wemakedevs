@@ -56,6 +56,7 @@ export function parseRequirements(input: readonly string[]): Requirement[] {
       experimentTypes.push('browser', 'api');
       targetTools.push('desktop', 'api');
     } else if (!experimentTypes.includes('browser') && !experimentTypes.includes('api')) {
+      // Always include one deterministic baseline before adversarial verification.
       experimentTypes.unshift('api');
       targetTools.unshift('api');
     }
