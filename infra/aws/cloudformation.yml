@@ -1,0 +1,67 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: VERIFIAI hackathon sandbox control-plane primitives
+Parameters:
+  SandboxImage:
+    Type: String
+    Description: ECR image URI for services/sandbox
+Resources:
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+  VerificationCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: verifiai-hackathon
+  SandboxLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 7
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+  SandboxTask:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: verifiai-sandbox
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      Cpu: '512'
+      Memory: '1024'
+      ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: sandbox
+          Image: !Ref SandboxImage
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8790
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref SandboxLogs
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: sandbox
+Outputs:
+  ArtifactBucketName:
+    Value: !Ref ArtifactBucket
+  ClusterName:
+    Value: !Ref VerificationCluster
+  TaskDefinitionArn:
+    Value: !Ref SandboxTask
