@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runFlagshipVerification } from '../services/integrations/flagship.mjs';
+import { DeepAuditService } from '../services/deep-audit/index.mjs';
 
 const root = fileURLToPath(new URL('../apps/web/', import.meta.url));
 const types = {
@@ -19,7 +20,16 @@ function sendJson(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
-export function createDemoServer() {
+async function readJson(req) {
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  if (!chunks.length) return {};
+  const raw = Buffer.concat(chunks).toString('utf8');
+  if (Buffer.byteLength(raw) > 256 * 1024) throw new Error('request body exceeds 256 KiB safety limit');
+  return raw ? JSON.parse(raw) : {};
+}
+
+export function createDemoServer({ deepAudit = new DeepAuditService() } = {}) {
   return createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
 
@@ -29,6 +39,37 @@ export function createDemoServer() {
         return sendJson(res, 200, { run });
       } catch (error) {
         return sendJson(res, 500, { error: String(error?.message ?? error) });
+      }
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/demo/deep-audit') {
+      try {
+        const body = await readJson(req);
+        const run = await deepAudit.run(body);
+        return sendJson(res, 200, { run });
+      } catch (error) {
+        return sendJson(res, 500, { error: String(error?.message ?? error) });
+      }
+    }
+
+    const steerRoute = url.pathname.match(/^\/api\/demo\/deep-audit\/([^/]+)\/steer$/);
+    if (req.method === 'POST' && steerRoute) {
+      try {
+        const body = await readJson(req);
+        const event = await deepAudit.steer(decodeURIComponent(steerRoute[1]), body.instruction);
+        return sendJson(res, 200, { event });
+      } catch (error) {
+        return sendJson(res, /not found/i.test(String(error)) ? 404 : 400, { error: String(error?.message ?? error) });
+      }
+    }
+
+    const prRoute = url.pathname.match(/^\/api\/demo\/deep-audit\/([^/]+)\/pr$/);
+    if (req.method === 'POST' && prRoute) {
+      try {
+        const pr = deepAudit.createPrPackage(decodeURIComponent(prRoute[1]));
+        return sendJson(res, 200, { pr });
+      } catch (error) {
+        return sendJson(res, /not found/i.test(String(error)) ? 404 : 409, { error: String(error?.message ?? error) });
       }
     }
 
