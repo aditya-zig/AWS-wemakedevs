@@ -1,14 +1,166 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>VERIFIAI — Autonomous Verification Lab</title>
-  <link rel="stylesheet" href="./styles.css" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f2eb">
+  <meta name="description" content="VERIFIAI proves whether AI-built software is ready for the real world using isolated verification agents and executed evidence.">
+  <title>VERIFIAI — Real-world verification for AI-built software</title>
+  <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-  <header class="topbar"><strong>VERIFIAI</strong><span>Evidence over AI opinion</span><span id="stageLabel">Landing</span></header>
-  <main id="app" aria-live="polite"></main>
-  <script type="module" src="./app.js"></script>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav" id="nav">
+  <a class="brand" href="#top"><span class="brandmark">V</span><b>VERIFIAI</b></a>
+  <nav class="navlinks" id="navlinks" aria-label="Primary">
+    <a href="#product">Product</a><a href="#deep-audit">Deep Audit</a><a href="#how-it-works">How it works</a>
+    <a href="#security">Security</a><a href="#developers">Developers</a><a href="#docs">Docs</a>
+  </nav>
+  <div class="navactions"><a href="#report">Log in</a><button class="btn primary compact" data-audit-trigger>Audit your repo ↗</button><button id="menu" class="menu" aria-expanded="false">Menu</button></div>
+</header>
+
+<main id="main">
+<section class="hero wrap" id="top">
+  <div class="hero-copy reveal">
+    <p class="eyebrow"><i class="pulse"></i> Autonomous pre-release verification</p>
+    <h1>Is your app actually ready for the real world?</h1>
+    <p class="hero-alt">VERIFIAI finds out <span id="rotatingLine">before your users do.</span></p>
+    <p class="lede">Connect your GitHub repo. VERIFIAI spins up isolated agents that test your product across security, APIs, real user behavior, performance, failures, and deployed environments—then shows you the evidence.</p>
+    <div class="actions"><button class="btn primary big" data-audit-trigger>Audit your repo ↗</button><button class="btn ghost big" id="watchAudit">Watch a Deep Audit ▶</button></div>
+    <small>GitHub in. Evidence out. No setup maze.</small>
+  </div>
+
+  <div class="hero-demo reveal" aria-label="Animated VERIFIAI audit workflow">
+    <div class="demo-head"><code>github.com/acme/checkout</code><span><i class="pulse"></i> Live audit</span></div>
+    <div class="hero-graph">
+      <svg viewBox="0 0 900 560" aria-hidden="true">
+        <path class="wire blue" d="M140 90 C240 90 245 90 330 90"/>
+        <path class="wire" d="M440 90 C535 90 530 90 630 90"/>
+        <path class="wire blue" d="M715 120 C770 180 745 250 660 286"/>
+        <path class="wire" d="M440 130 C440 205 245 205 190 260"/>
+        <path class="wire blue" d="M440 130 C440 215 440 220 440 260"/>
+        <path class="wire" d="M440 130 C440 205 620 210 665 260"/>
+      </svg>
+      <div class="node repo"><span>GH</span><b>Repository connected</b><small>acme/checkout · main</small><em>✓</em></div>
+      <div class="node discover"><span>01</span><b>Discovering application</b><small>Next.js · API · Postgres</small><em>✓</em></div>
+      <div class="node sandbox"><span>02</span><b>Sandbox created</b><small>Isolated · temporary creds</small><em>✓</em></div>
+
+      <div class="engines" id="heroEngines">
+        <button data-engine>Security<small>Inspecting auth…</small></button>
+        <button data-engine>Browser<small>Testing checkout…</small></button>
+        <button data-engine>API<small>Checking invariants…</small></button>
+        <button data-engine>Users<small>Simulating customer…</small></button>
+        <button data-engine>Performance<small>Measuring latency…</small></button>
+        <button data-engine>Chaos<small>Injecting delay…</small></button>
+        <button data-engine>Computer Use<small>Clicking real UI…</small></button>
+        <button data-engine>Leakage<small>Scanning exposure…</small></button>
+      </div>
+
+      <article class="finding mainfinding"><span>CRITICAL</span><b>Checkout can remain stuck after payment timeout</b><small>Reproduced 3/3 · evidence captured</small></article>
+      <article class="finding subfinding"><span>SECURITY</span><b>Session token remains valid after logout</b><small>Cross-checking reproduction…</small></article>
+      <div class="typed"><i class="pulse"></i><span id="typedStatus">Deep Audit started</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="stats">
+  <div class="reveal"><b data-counter="8">0</b><span>verification engines</span></div>
+  <div class="reveal"><b data-counter="1">0</b><span>combined report</span></div>
+  <div class="reveal"><b data-counter="100" data-suffix="%">0</b><span>evidence-backed findings</span></div>
+  <div class="reveal"><b data-counter="0">0</b><span>silent auto-merges</span></div>
+</section>
+
+<section class="section wrap" id="product">
+  <header class="section-head reveal"><p class="eyebrow">One audit, many ways to break your app</p><h2>Your tests know the happy path.<br><span>VERIFIAI looks for everything else.</span></h2><p>Deep Audit combines independent verification engines so one narrow test suite never decides whether your application is ready.</p></header>
+  <div class="engine-grid">
+    <article class="engine-card wide reveal"><header><i>S</i><em>Running</em></header><h3>Security</h3><p>Attack the application before someone else does.</p><div class="mini security-mini"><span class="scan"></span><code>POST /auth/logout</code><b>Token accepted after revoke</b></div><button class="expand">Explore +</button><div class="details">Adversarial verification stays bounded inside the isolated environment and produces reproducible evidence.</div></article>
+    <article class="engine-card reveal"><header><i>D</i><em>Scanning</em></header><h3>Secrets &amp; Data</h3><p>Find what your app should never expose.</p><div class="mini leak-mini"><code>api_key=sk_live_••••</code><strong>REDACTED</strong></div><button class="expand">Explore +</button><div class="details">Checks credentials, tokens, sensitive responses, logs, recordings, and accidental leakage.</div></article>
+    <article class="engine-card reveal"><header><i>U</i><em>5 personas</em></header><h3>Real Users</h3><p>See what happens when humans don't behave like your test script.</p><div class="mini users-mini"><span>New customer</span><span>Power user</span><span>Impatient buyer</span></div><button class="expand">Explore +</button><div class="details">Simulated personas explore the app and surface broken recovery journeys.</div></article>
+    <article class="engine-card wide reveal"><header><i>B</i><em>Live</em></header><h3>Browser &amp; Computer Use</h3><p>Agents actually use the product.</p><div class="browser-mini"><div>● ● ● <code>/checkout</code></div><section><button>Pay ₹499</button><i class="cursor"></i></section></div><button class="expand">Explore +</button><div class="details">VERIFIAI clicks, types, navigates, waits, retries, and observes real application behavior.</div></article>
+    <article class="engine-card reveal"><header><i>A</i><em>42 checks</em></header><h3>APIs</h3><p>Verify what the backend actually returns.</p><div class="mini api-mini"><code>GET /cart</code><b>200</b><code>POST /pay</code><b class="bad">504</b></div><button class="expand">Explore +</button><div class="details">Tests status codes, schemas, invariants, failures, and edge cases.</div></article>
+    <article class="engine-card reveal"><header><i>P</i><em>p95 481ms</em></header><h3>Performance</h3><p>Find where the experience collapses under pressure.</p><div class="mini bars"><i></i><i></i><i></i><i></i><i></i><i></i></div><button class="expand">Explore +</button><div class="details">Measures latency, concurrency, degraded behavior, and bottlenecks.</div></article>
+    <article class="engine-card reveal"><header><i>C</i><em>Fault injected</em></header><h3>Chaos</h3><p>Break dependencies on purpose.</p><div class="mini chaos-mini"><span>Payment provider</span><b>+8,000ms</b><span>Network</span><b>degraded</b></div><button class="expand">Explore +</button><div class="details">Injects controlled latency and failures to expose hidden assumptions.</div></article>
+    <article class="engine-card reveal"><header><i>↗</i><em>Optional</em></header><h3>Deployed App</h3><p>A repo passing locally isn't enough.</p><div class="mini deployed-mini"><i class="pulse"></i><code>https://staging.acme.dev</code><small>browser + API checks ready</small></div><button class="expand">Explore +</button><div class="details">Validates discovered deployed URLs when safe verification is available.</div></article>
+  </div>
+</section>
+
+<section class="section dark" id="live-audit">
+  <div class="wrap">
+    <header class="section-head light reveal"><p class="eyebrow">Watch the agents work</p><h2>Don't wait for a mysterious score.<br><span>Watch the investigation happen.</span></h2><p>See what every agent is testing, what it discovered, what evidence it collected, and what it investigates next.</p></header>
+    <div class="console reveal">
+      <aside class="agents-panel"><div class="panel-title"><b>Agents</b><em>LIVE</em></div><ul id="agentList">
+        <li><i></i><span>Security Agent</span><small>Running</small></li><li><i></i><span>Browser Agent</span><small>Running</small></li>
+        <li><i class="ok"></i><span>API Agent</span><small>Verified</small></li><li><i></i><span>User Simulation</span><small>Running</small></li>
+        <li><i class="idle"></i><span>Chaos Agent</span><small>Queued</small></li><li><i></i><span>Performance Agent</span><small>Running</small></li>
+      </ul><button class="btn inverse" id="runAuditFromConsole">Run flagship audit</button></aside>
+      <div class="computer"><div class="computerbar"><span>Live environment</span><i>● ● ●</i></div><div class="demoapp"><div class="appnav"><b>ACME</b><span>Cart · 2 items</span></div><div class="checkout"><div class="product"><div></div><span>Premium plan</span><b>₹499</b></div><div class="payment"><small>Card ending 4242</small><button id="payDemo">Pay ₹499</button><p id="processing"><i class="spinner"></i> Processing payment…</p></div></div><i class="audit-cursor"></i></div></div>
+      <aside class="evidence-panel"><div class="panel-title"><b>Live evidence</b><em id="evidenceCount">5 events</em></div><div class="feed" id="feed">
+        <div><time>12:41:09</time><span>Checkout opened</span></div><div><time>12:41:13</time><span>Payment request sent</span></div>
+        <div><time>12:41:21</time><span>Provider timed out</span></div><div class="alert"><time>12:41:32</time><span>UI still shows Processing</span></div>
+        <div class="alert"><time>12:41:35</time><span>Reproduction 2/3 confirmed</span></div>
+      </div></aside>
+    </div>
+  </div>
+</section>
+
+<section class="section wrap story" id="steer">
+  <div class="story-copy reveal"><p class="eyebrow">Steer the audit</p><h2>See something interesting?<br><span>Tell VERIFIAI to go deeper.</span></h2><p>Human instructions become new bounded experiments without breaking the evidence chain.</p>
+    <div class="chat"><p class="user">Investigate the checkout failure deeper.</p><p class="ai">I reproduced it 3/3 times. I'm comparing frontend state against the payment webhook and database state.</p><p class="user">Check if this can cause duplicate payments.</p><p class="ai" id="chatResponse">Ready to branch the audit.</p><form id="steerForm"><input id="steerInput" value="Check recovery after the webhook arrives late."><button class="btn primary">Run deeper check</button></form></div>
+  </div>
+  <div class="story-visual branch reveal"><div class="branchroot">Checkout failure<small>Confirmed</small></div><i class="branchline"></i><div class="branchcards" id="branchCards"><div><b>Frontend state</b><small>Comparing</small></div><div><b>Payment webhook</b><small>Tracing</small></div><div><b>Database state</b><small>Verified</small></div></div></div>
+</section>
+
+<section class="section evidence-section" id="evidence"><div class="wrap">
+  <header class="section-head reveal"><p class="eyebrow">Evidence, not AI guesses</p><h2>Agents can have theories.<br><span>Evidence decides what is true.</span></h2><p>VERIFIAI never turns uncertainty into a green checkmark.</p></header>
+  <div class="states"><article class="reveal"><i class="confirmed">✓</i><h3>Confirmed</h3><p>Reproduced with evidence.</p></article><article class="reveal"><i class="unconfirmed">?</i><h3>Unconfirmed</h3><p>Detected, but independent reproduction failed.</p></article><article class="reveal"><i>…</i><h3>Unknown</h3><p>Not enough evidence to decide.</p></article><article class="reveal"><i class="incomplete">!</i><h3>Incomplete</h3><p>The check could not finish, with the exact reason shown.</p></article></div>
+  <div class="stateflow reveal"><span>Potential auth issue</span><b>→</b><span class="working">Reproducing…</span><b>→</b><span>2/3 reproduction</span><b>→</b><span class="working">Cross-checking…</span><b>→</b><span class="confirmed-state">CONFIRMED</span></div>
+</div></section>
+
+<section class="section wrap" id="report">
+  <header class="section-head reveal"><p class="eyebrow">One report</p><h2>Eight testing systems.<br><span>One report you can actually understand.</span></h2></header>
+  <div class="report reveal"><aside><b>VERIFIAI Report</b><button class="report-tab active">All findings <span>12</span></button><button class="report-tab">Critical <span>2</span></button><button class="report-tab">Security <span>3</span></button><button class="report-tab">Broken flows <span>2</span></button><button class="report-tab">API <span>1</span></button><button class="report-tab">Unknown <span>2</span></button></aside>
+  <article id="reportBody"><div class="meta"><span>CRITICAL</span><em>Confirmed</em><small>Reproduced 3/3</small></div><h3>Checkout remains stuck after provider timeout</h3><div class="reportcols"><div><b>User impact</b><p>Customers may believe payment is still processing indefinitely.</p></div><div><b>Root cause</b><p>Frontend timeout recovery never transitions checkout out of its loading state.</p></div></div><div class="chips"><span>Browser recording</span><span>API trace</span><span>App logs</span><span>Payment state</span><span>Screenshot</span><span>Timeline</span></div><button class="btn darkbtn">Investigate</button></article></div>
+</section>
+
+<section class="section blue-section" id="fix-verification"><div class="wrap">
+  <header class="section-head light reveal"><p class="eyebrow">VERIFIAI fixes the fix</p><h2>Finding the bug isn't enough.<br><span>Prove the fix works.</span></h2></header>
+  <div class="fixgrid"><div class="timeline reveal" id="fixTimeline">
+    <div class="done"><i>1</i><b>Bug reproduced</b><small>3/3 failed</small></div><div class="done"><i>2</i><b>Root cause confirmed</b><small>Evidence cross-checked</small></div><div class="done"><i>3</i><b>Patch generated</b><small>Controlled workspace</small></div><div class="active"><i>4</i><b>New sandbox created</b><small>Applying repair…</small></div><div><i>5</i><b>Original test rerun</b><small>Pending</small></div><div><i>6</i><b>Regression suite</b><small>Pending</small></div><div><i>7</i><b>Adversarial checks</b><small>Pending</small></div><div><i>8</i><b>VERIFIED</b><small>Pending</small></div>
+  </div><div class="proof reveal"><div class="beforeafter"><article><small>Before</small><div><i class="spinner"></i><b>Processing payment…</b></div><p>Checkout hangs indefinitely.</p></article><article><small>After</small><div class="good"><i>✓</i><b>Payment provider unavailable.</b><em>Your cart is safe. Please try again.</em></div><p>Checkout gracefully recovers.</p></article></div><div class="player"><button>▶</button><span>Proof-of-fix · 00:18</span><i></i></div><div class="proofstats"><div><b>3/3</b><span>original failed</span></div><div><b>10/10</b><span>after fix passed</span></div><div><b>0</b><span>regression failures</span></div></div><button class="btn inverse" id="createPr">Create pull request</button><p>You decide what gets merged.</p></div></div>
+</div></section>
+
+<section class="section wrap" id="deployed"><header class="section-head reveal"><p class="eyebrow">Real world, not just source code</p><h2>Test what you built.<br><span>Then test what you deployed.</span></h2><p>When VERIFIAI discovers a deployed URL or installable application, it can validate that experience too.</p></header><div class="split reveal"><article><small>Repository</small><div class="vertical"><span>Repository</span><i></i><span>Build</span><i></i><span>Sandbox</span><i></i><span>Verification</span></div></article><b>+</b><article><small>Runtime</small><div class="vertical"><span>Production-like URL</span><i></i><span>Browser</span><i></i><span>APIs</span><i></i><span>Safe validation</span></div></article></div></section>
+
+<section class="section memory" id="memory"><div class="wrap story"><div class="story-copy reveal"><p class="eyebrow">Memory without blind trust</p><h2>Every audit gets smarter.<br><span>Nothing becomes truth just because it was true yesterday.</span></h2><p>VERIFIAI indexes verified knowledge from previous runs to reduce repeated work and cost, then rechecks anything that matters to the current verdict.</p></div><div class="story-visual graph reveal"><svg viewBox="0 0 560 430"><path class="wire blue" d="M280 210 C205 180 180 120 120 92"/><path class="wire" d="M280 210 C350 160 390 120 445 90"/><path class="wire" d="M280 210 C218 270 180 310 120 340"/><path class="wire blue" d="M280 210 C350 272 390 310 445 340"/></svg><div class="center">Current audit<small>commit f19c2</small></div><div class="k k1"><b>Build command</b><span>Confirmed</span><small>commit a82fd</small></div><div class="k k2"><b>Checkout endpoint</b><span>Confirmed</span><small>/api/checkout</small></div><div class="k k3"><b>Previous failure</b><span class="warn">Revalidate</span><small>payment timeout</small></div><div class="k k4"><b>Auth flow</b><span>Confirmed</span><small>OAuth callback</small></div></div></div></section>
+
+<section class="section dark" id="security"><div class="wrap security-grid"><header class="section-head light reveal"><p class="eyebrow">Security</p><h2>Aggressive in the sandbox.<br><span>Careful everywhere else.</span></h2><p>Destructive verification stays isolated. Temporary credentials are injected only for the run and redacted from reports, logs, recordings, and indexed knowledge.</p></header><div class="sandbox-visual reveal"><div class="boundary"><small>ISOLATED SANDBOX</small><span class="tag t1">Attack simulation</span><span class="tag t2">Chaos</span><span class="tag t3">Browser agents</span><span class="tag t4">Security probes</span><span class="tag t5">Temporary credentials</span><div class="target">Target app<small>Disposable environment</small></div></div><aside><small>OUTSIDE BOUNDARY</small><div>Production data<b>Protected</b></div><div>Persistent secrets<b>Never indexed</b></div></aside></div></div></section>
+
+<section class="section wrap" id="deep-audit"><header class="section-head reveal"><p class="eyebrow">Deep Audit</p><h2>One coordinated verification swarm.</h2><p class="larger">The closest thing to sending an entire QA, security, reliability, and user-research team after your app at once.</p></header><div class="stack reveal"><div>Repository<small>source + requirements</small></div><i></i><div>Discovery Agent<small>understand build + surfaces</small></div><i></i><section><span>Security</span><span>Browser</span><span>Leakage</span><span>Computer Use</span><span>APIs</span><span>Users</span><span>Chaos</span><span>Performance</span></section><i></i><div>Evidence Graph<small>executed observations only</small></div><i></i><div>Investigator<small>reproduce + cross-check</small></div><i></i><div class="final">Combined Report<small>proof, repair, re-verification</small></div></div><div class="deep-actions"><button class="btn primary big" id="runDeepAudit">Run live flagship demo</button><span id="deepStatus">Ready to execute the real deterministic verification endpoint.</span></div></section>
+
+<section class="section soft" id="how-it-works"><div class="wrap"><header class="section-head reveal"><p class="eyebrow">How it works</p><h2>Repo in. Proof out.</h2></header><div class="steps"><article class="reveal"><span>01</span><h3>Connect</h3><b>Give VERIFIAI your GitHub repository.</b><p>We discover the application automatically.</p></article><article class="reveal"><span>02</span><h3>Run</h3><b>Deep Audit launches isolated specialist agents.</b><p>They test the product from different angles.</p></article><article class="reveal"><span>03</span><h3>Investigate</h3><b>Findings are reproduced and cross-checked.</b><p>Evidence—not model confidence—determines the result.</p></article><article class="reveal"><span>04</span><h3>Verify</h3><b>Proposed fixes are tested before they reach you.</b><p>Sandbox verification, regressions, proof video, then PR.</p></article></div></div></section>
+
+<section class="section wrap" id="developers"><div class="devcard reveal"><div><p class="eyebrow">Developers</p><h2>Built to leave an evidence trail.</h2><p>Every requirement, experiment, observation, finding, repair, and re-verification remains linked to the run that produced it.</p></div><pre><code>Requirement R-CHECKOUT
+  ↓
+Experiment exp-chaos
+  ↓
+Observation: payment timeout
+  ↓
+Finding: checkout stuck
+  ↓
+Repair branch
+  ↓
+Re-verification: 10/10
+  ↓
+VERIFIED</code></pre></div></section>
+
+<section class="section final-cta" id="docs"><div class="wrap reveal"><p class="eyebrow">Ship with evidence</p><h2>Your users shouldn't be your first real-world test.</h2><p>Connect your repo and find out what happens before you ship.</p><div class="actions center"><button class="btn primary big" data-audit-trigger>Audit your repo ↗</button><a class="btn ghost big" href="#deep-audit">See Deep Audit</a></div><small>You keep control. VERIFIAI brings the evidence.</small></div></section>
+</main>
+
+<footer><div class="footgrid"><div><a class="brand" href="#top"><span class="brandmark">V</span><b>VERIFIAI</b></a><p>Real-world verification for AI-built software.</p></div><div><b>Product</b><a href="#deep-audit">Deep Audit</a><a href="#security">Security</a><a href="#product">User Simulation</a><a href="#fix-verification">Fix Verification</a></div><div><b>Developers</b><a href="#developers">Documentation</a><a href="https://github.com/aditya-zig/AWS-wemakedevs">GitHub</a><a href="#developers">API</a></div><div><b>Company</b><a href="#top">About</a><a href="#docs">Contact</a></div></div><div class="footbottom"><span>VERIFIAI — Real-world verification for AI-built software.</span><span>Evidence over AI opinion.</span></div></footer>
+
+<div class="drawer" id="drawer" aria-hidden="true"><button class="backdrop" id="backdrop" aria-label="Close"></button><aside role="dialog" aria-modal="true" aria-labelledby="drawerTitle"><button class="x" id="closeDrawer">×</button><p class="eyebrow">Start Deep Audit</p><h2 id="drawerTitle">Audit a repository</h2><label for="repoInput">GitHub repository</label><div class="repo-input"><input id="repoInput" value="github.com/acme/checkout"><button class="btn primary" id="drawerRun">Run demo audit</button></div><p class="note">This hackathon build executes the deterministic flagship verification backend and renders the returned evidence.</p><div class="progress" id="progress"><div><span>1</span><b>Repository connected</b><small>Ready</small></div><div><span>2</span><b>Discovery</b><small>Waiting</small></div><div><span>3</span><b>Deep Audit</b><small>Waiting</small></div><div><span>4</span><b>Evidence report</b><small>Waiting</small></div></div><div id="drawerResult"></div></aside></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script type="module" src="./app.js"></script>
 </body>
 </html>
