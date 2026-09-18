@@ -175,11 +175,11 @@ function inferBootstrap(files) {
 export async function discoverTarget(input = {}, { guard = new BudgetGuard(), fetchImpl = fetch } = {}) {
   let files = { ...(input.repoFiles ?? {}) };
   let source = Object.keys(files).length ? 'supplied-snapshot' : 'public-github-probe';
-  if (!Object.keys(files).length && input.repository) files = await probePublicRepo(input.repository, guard, fetchImpl);
   if (!Object.keys(files).length && /(?:^|\/)acme\/checkout$/i.test(String(input.repository ?? '').replace(/^https?:\/\/github\.com\//, ''))) {
     files = fixtureRepoFiles();
     source = 'deterministic-demo-fixture';
   }
+  if (!Object.keys(files).length && input.repository) files = await probePublicRepo(input.repository, guard, fetchImpl);
   const bootstrapAttempts = inferBootstrap(files);
   const discoveredUrls = extractUrls(files);
   const deployedUrl = input.deployedUrl || discoveredUrls.find((url) => !/github\.com|npmjs\.com/i.test(url)) || null;
@@ -503,19 +503,41 @@ export class DeepAuditService {
       resourceLimits: { cpus: 1, memoryMb: 768, pids: 128 },
       network: 'bounded'
     });
+    const liveState = {
+      runId,
+      status: 'running',
+      mode: 'deep-audit',
+      defaultMode: true,
+      repository: input.repository ?? null,
+      sandbox: { mode: sandbox.mode, resourceLimits: sandbox.resourceLimits, isolated: true, ephemeral: true },
+      credentials: credentialMeta,
+      engines: [],
+      findings: [],
+      coverage: coverage([]),
+      guardrails: guard.snapshot(),
+      events
+    };
+    const publish = () => {
+      liveState.guardrails = guard.snapshot();
+      this.runs.set(runId, structuredClone(redactSecrets(liveState, explicitSecrets)));
+    };
+    publish();
     let target;
     try {
       const discovery = await discoverTarget(input, { guard, fetchImpl: this.fetchImpl });
       events.push({ type: 'discovery.completed', at: now(), runId, message: `${discovery.source}: ${discovery.status}` });
       const priorKnowledge = await this.knowledge.query({ repository: input.repository ?? 'unknown', commitSha: discovery.commitSha });
+      liveState.discovery = discovery;
+      liveState.priorKnowledge = priorKnowledge;
+      publish();
       target = await startDemoTarget();
 
       const runtime = new AdapterRuntime()
-        .register(createCuaAdapter({ targetUrl: target.baseUrl }))
         .register(createStrixAdapter({ allowedHost: '127.0.0.1' }))
         .register(createApiAdapter())
         .register(createPerformanceAdapter())
         .register(createMiroFishAdapter({ maxPersonas: guard.maxPersonas }));
+      const desktopRuntime = () => new AdapterRuntime().register(createCuaAdapter({ targetUrl: target.baseUrl }));
 
       const exp = (id, tool, type, description) => ({ id, requirementId: `REQ-${id}`, type, tool, description, status: 'pending', attempts: 0, evidenceIds: [] });
       const context = {
@@ -528,14 +550,32 @@ export class DeepAuditService {
         }
       };
 
+      const tracked = (name, task) => async () => {
+        events.push({ type: 'engine.started', at: now(), runId, engine: name, message: `${name} engine started` });
+        publish();
+        const result = await task();
+        liveState.engines.push(result);
+        liveState.coverage = coverage(liveState.engines);
+        liveState.findings = buildFindings(liveState.engines);
+        events.push({ type: `engine.${result.state}`, at: now(), runId, engine: name, message: result.reason || result.observations[0] || result.status });
+        publish();
+        return result;
+      };
+
       const tasks = [
-        () => withRetries('security', () => runtime.execute('security', exp('security', 'security', 'security', 'Run bounded security probes'), context), { retries: 1, guard }),
-        () => withRetries('api', () => runtime.execute('api', exp('api', 'api', 'api', 'Verify API invariants'), context), { retries: 1, guard }),
-        () => withRetries('browser', () => runtime.execute('desktop', exp('browser', 'desktop', 'browser', 'Use the web product like a real user'), context), { retries: 1, guard }),
-        () => withRetries('computer', () => runtime.execute('desktop', exp('computer', 'desktop', 'browser', 'Use the application through computer-use workflow'), context), { retries: 1, guard }),
-        () => withRetries('customer', () => runtime.execute('customer', exp('customer', 'customer', 'customer', 'Simulate diverse customer behavior'), context), { retries: 1, guard }),
-        () => withRetries('performance', () => runtime.execute('performance', exp('performance', 'performance', 'performance', 'Measure bounded p95 and error rate'), context), { retries: 1, guard }),
-        () => withRetries('leakage', async () => {
+        tracked('security', () => withRetries('security', () => runtime.execute('security', exp('security', 'security', 'security', 'Run bounded security probes'), context), { retries: 1, guard })),
+        tracked('api', () => withRetries('api', () => {
+          guard.request(1);
+          return runtime.execute('api', exp('api', 'api', 'api', 'Verify API invariants'), context);
+        }, { retries: 1, guard })),
+        tracked('browser', () => withRetries('browser', () => desktopRuntime().execute('desktop', exp('browser', 'desktop', 'browser', 'Use the web product like a real user'), context), { retries: 1, guard })),
+        tracked('computer', () => withRetries('computer', () => desktopRuntime().execute('desktop', exp('computer', 'desktop', 'browser', 'Use the application through computer-use workflow'), context), { retries: 1, guard })),
+        tracked('customer', () => withRetries('customer', () => runtime.execute('customer', exp('customer', 'customer', 'customer', 'Simulate diverse customer behavior'), context), { retries: 1, guard })),
+        tracked('performance', () => withRetries('performance', () => {
+          guard.request(8);
+          return runtime.execute('performance', exp('performance', 'performance', 'performance', 'Measure bounded p95 and error rate'), context);
+        }, { retries: 1, guard })),
+        tracked('leakage', () => withRetries('leakage', async () => {
           const files = discovery.source === 'deterministic-demo-fixture' ? fixtureRepoFiles() : input.repoFiles ?? {};
           const hits = scanLeakage(files);
           return {
@@ -544,8 +584,8 @@ export class DeepAuditService {
             evidence: [{ kind: 'code', source: 'leakage', executed: true, payload: { hits, outcome: hits.length ? 'fail' : 'pass' } }],
             crossCheck: hits.length ? 'independent' : undefined
           };
-        }, { retries: 1, guard }),
-        () => withRetries('chaos', async (attempt) => {
+        }, { retries: 1, guard })),
+        tracked('chaos', () => withRetries('chaos', async (attempt) => {
           const fault = this.sandbox.injectFault(runId, { kind: 'latency', dependency: 'payment-provider', latencyMs: 8000 });
           const evidence = [
             { kind: 'runtime', source: 'sandbox-chaos', executed: true, payload: { fault, attempt: attempt + 1, outcome: 'fail' } },
@@ -554,13 +594,26 @@ export class DeepAuditService {
           ];
           this.sandbox.clearFaults(runId);
           return { status: 'fail', observations: ['Checkout remained stuck after payment timeout'], evidence };
-        }, { retries: 1, guard })
+        }, { retries: 1, guard }))
       ];
 
       const engines = await pool(tasks, guard.maxConcurrentEngines);
-      engines.push(normalizeEngine('deployed', await testDeployed(discovery.deployedUrl && !/example\.test/i.test(discovery.deployedUrl) ? discovery.deployedUrl : input.deployedUrl, guard, this.fetchImpl), []));
+      const deployedEngine = normalizeEngine('deployed', await testDeployed(discovery.deployedUrl && !/example\.test/i.test(discovery.deployedUrl) ? discovery.deployedUrl : input.deployedUrl, guard, this.fetchImpl), []);
+      engines.push(deployedEngine);
+      liveState.engines.push(deployedEngine);
+      events.push({ type: `engine.${deployedEngine.state}`, at: now(), runId, engine: 'deployed', message: deployedEngine.reason || deployedEngine.observations[0] || deployedEngine.status });
+      liveState.coverage = coverage(liveState.engines);
+      liveState.findings = buildFindings(liveState.engines);
+      publish();
+
       const appResult = await testInstallableApp(discovery.installableApp, this.sandbox, runId, guard, this.fetchImpl);
-      engines.push(normalizeEngine('installable', appResult, []));
+      const installableEngine = normalizeEngine('installable', appResult, []);
+      engines.push(installableEngine);
+      liveState.engines.push(installableEngine);
+      events.push({ type: `engine.${installableEngine.state}`, at: now(), runId, engine: 'installable', message: installableEngine.reason || installableEngine.observations[0] || installableEngine.status });
+      liveState.coverage = coverage(liveState.engines);
+      liveState.findings = buildFindings(liveState.engines);
+      publish();
 
       const findings = buildFindings(engines);
       const reportCoverage = coverage(engines);
@@ -574,7 +627,6 @@ export class DeepAuditService {
           ? 'Issues confirmed — fix verified'
           : 'Verified';
 
-      events.push(...engines.map((engine) => ({ type: `engine.${engine.state}`, at: now(), runId, engine: engine.name, message: engine.reason || engine.observations[0] || engine.status })));
       events.push({ type: 'fix.verified', at: now(), runId, message: `${fix.targeted.passed}/${fix.targeted.total} targeted checks passed; ${fix.regressionFailures} regressions` });
       events.push({ type: 'run.completed', at: now(), runId, message: overall });
 
@@ -586,6 +638,7 @@ export class DeepAuditService {
 
       const result = redactSecrets({
         runId,
+        status: 'completed',
         mode: 'deep-audit',
         defaultMode: true,
         repository: input.repository ?? null,
