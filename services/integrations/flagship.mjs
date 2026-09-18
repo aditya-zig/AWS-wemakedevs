@@ -1,81 +1,94 @@
-import { SandboxManager } from '../sandbox/runtime.mjs';
 import { AdapterRuntime } from './runtime.mjs';
 import { createCuaAdapter } from '../../packages/adapters/cua/index.mjs';
 import { createStrixAdapter } from '../../packages/adapters/strix/index.mjs';
+import { createToxiproxyAdapter } from '../../packages/adapters/toxiproxy/index.mjs';
 
 const now = () => new Date().toISOString();
 
-export async function runFlagshipVerification({ runId = `demo-${Date.now()}`, root } = {}) {
-  const sandbox = new SandboxManager(root ? { root } : undefined);
-  const run = await sandbox.create(runId, { resourceLimits: { cpus: 1, memoryMb: 512 } });
-  const runtime = new AdapterRuntime().register(createCuaAdapter()).register(createStrixAdapter());
-  const evidence = [];
-  const events = [{ type: 'run.started', at: now(), runId }];
+const experiment = (id, tool, type, description) => ({
+  id,
+  requirementId: 'R-CHECKOUT',
+  type,
+  tool,
+  description,
+  status: 'pending',
+  attempts: 0,
+  evidenceIds: [],
+});
 
-  const normal = await runtime.execute('desktop', {
-    id: 'exp-normal', requirementId: 'R-CHECKOUT', type: 'browser', tool: 'desktop',
-    description: 'Normal checkout completes', status: 'pending', attempts: 0, evidenceIds: []
-  });
-  evidence.push(...normal.evidence);
-  events.push({ type: 'experiment.passed', at: now(), experimentId: 'exp-normal' });
+/**
+ * Legacy compatibility helper.
+ *
+ * This function no longer fabricates the old FAILED -> VERIFIED story. It can
+ * execute real Cua, Strix and Toxiproxy integrations when they are configured,
+ * but repair/re-verification belongs to the real Strands swarm under /api/audits.
+ */
+export async function runFlagshipVerification({
+  runId = `legacy-${Date.now()}`,
+  targetUrl = process.env.VERIFIAI_FLAGSHIP_TARGET_URL,
+  toxiproxy = null,
+} = {}) {
+  const events = [{ type: 'run.started', at: now(), runId, message: 'Legacy compatibility run started with real engines only' }];
+  if (!targetUrl) {
+    return {
+      runId,
+      status: 'incomplete',
+      overall: 'Incomplete',
+      reason: 'VERIFIAI_FLAGSHIP_TARGET_URL is required. The public product uses /api/audits and the real Strands swarm.',
+      engines: [],
+      evidence: [],
+      events: [...events, { type: 'run.incomplete', at: now(), runId, message: 'No target URL; no synthetic evidence generated' }],
+    };
+  }
 
-  const fault = sandbox.injectFault(runId, { kind: 'latency', dependency: 'payment-provider', latencyMs: 8000 });
-  evidence.push({ kind: 'runtime', source: 'sandbox-chaos', executed: true, payload: { fault } });
-  evidence.push({ kind: 'network', source: 'sandbox-chaos', executed: true, payload: { endpoint: '/payments/confirm', latencyMs: 8000, timeoutMs: 5000, timedOut: true } });
-  evidence.push({ kind: 'screenshot', source: 'cua-fallback', executed: true, payload: { state: 'checkout-loading-stuck', reproduction: '3/3' } });
-  evidence.push({ kind: 'database', source: 'demo-target', executed: true, payload: { cartPreserved: true, paymentCreated: false } });
-  events.push({ type: 'experiment.failed', at: now(), experimentId: 'exp-chaos', message: 'Checkout remains loading after payment timeout' });
+  const runtime = new AdapterRuntime()
+    .register(createCuaAdapter())
+    .register(createStrixAdapter())
+    .register(createToxiproxyAdapter());
 
-  const before = {
-    verdict: 'FAILED',
-    requirementId: 'R-CHECKOUT',
-    reason: 'Executed network + runtime evidence reproduces stuck checkout state 3/3 under 8s payment latency.'
+  const context = {
+    target: { baseUrl: targetUrl },
+    environment: {
+      runId,
+      cua: { targetUrl },
+      toxiproxy: toxiproxy ?? {},
+    },
   };
-  const finding = {
-    status: 'confirmed',
-    rootCause: 'frontend timeout path does not reset checkout loading state',
-    evidence: ['network timeout', 'stuck loading screenshot', 'cart preserved database state']
-  };
-  const repair = {
-    branch: 'verifiai/fix-checkout-timeout',
-    patch: 'finally { setCheckoutLoading(false); preserveCart(); }',
-    applied: true
-  };
-  evidence.push({ kind: 'code', source: 'repair-fallback', executed: true, payload: { finding, repair } });
 
-  sandbox.clearFaults(runId);
-  const afterDesktop = await runtime.execute('desktop', {
-    id: 'exp-reverify', requirementId: 'R-CHECKOUT', type: 'browser', tool: 'desktop',
-    description: 'Checkout gracefully exits loading state after provider timeout', status: 'pending', attempts: 0, evidenceIds: []
-  });
-  evidence.push(...afterDesktop.evidence);
-  const security = await runtime.execute('security', {
-    id: 'exp-security', requirementId: 'R-CHECKOUT', type: 'security', tool: 'security',
-    description: 'Scoped post-repair security regression probe', status: 'pending', attempts: 0, evidenceIds: []
-  });
-  evidence.push(...security.evidence);
-  events.push({ type: 'experiment.passed', at: now(), experimentId: 'exp-reverify', message: '10/10 passed' });
-  events.push({ type: 'run.completed', at: now(), runId });
+  const engines = [];
+  for (const [name, exp] of [
+    ['desktop', experiment('real-browser', 'desktop', 'browser', 'Use the target like a real customer')],
+    ['security', experiment('real-security', 'security', 'security', 'Run a real bounded Strix security assessment')],
+    ['chaos', experiment('real-chaos', 'chaos', 'chaos', 'Inject a real network fault through Toxiproxy')],
+  ]) {
+    const result = await runtime.execute(name, exp, context);
+    engines.push({ name, ...result });
+    events.push({
+      type: result.status === 'unknown' ? 'engine.incomplete' : 'engine.completed',
+      at: now(),
+      runId,
+      engine: name,
+      message: result.observations?.[0] ?? result.status,
+    });
+  }
 
-  const after = {
-    verdict: 'VERIFIED',
-    requirementId: 'R-CHECKOUT',
-    reason: '10/10 deterministic re-verification passes; 0 regressions; chaos state restored.'
-  };
-  const artifact = {
+  const evidence = engines.flatMap((engine) => engine.evidence ?? []);
+  const incomplete = engines.filter((engine) => engine.status === 'unknown').length;
+  const overall = incomplete ? 'Incomplete' : 'Completed';
+  events.push({ type: incomplete ? 'run.incomplete' : 'run.completed', at: now(), runId, message: overall });
+
+  return {
     runId,
-    sandbox: run,
-    requirement: 'If payment provider is unavailable, checkout must fail gracefully and preserve the cart.',
-    before,
-    finding,
-    repair,
-    after,
-    regressions: 0,
-    chaosRestored: sandbox.getState(runId).faults.every((item) => item.active === false),
+    status: incomplete ? 'incomplete' : 'completed',
+    overall,
+    targetUrl,
+    engines,
     evidence,
-    events
+    repair: null,
+    verification: null,
+    reason: incomplete
+      ? 'One or more real upstream engines were unavailable or not configured. No fallback evidence was substituted.'
+      : 'Real upstream engines executed. Repair and independent re-verification must run through /api/audits.',
+    events,
   };
-  await sandbox.writeArtifact(runId, 'verification-result.json', JSON.stringify(artifact, null, 2));
-  await sandbox.destroy(runId);
-  return artifact;
 }
