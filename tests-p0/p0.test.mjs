@@ -24,27 +24,24 @@ test('sandbox creates clean isolated runs and cleanup removes them', async () =>
   await manager.reset();
 });
 
-test('adapter runtime normalizes desktop and security evidence', async () => {
+test('named external adapters never substitute fake evidence when runtimes are absent', async () => {
   const runtime = new AdapterRuntime();
-  runtime.register(createCuaAdapter());
-  runtime.register(createStrixAdapter());
+  runtime.register(createCuaAdapter({ serviceUrl: '' }));
+  runtime.register(createStrixAdapter({ command: '__verifiai_missing_strix__' }));
   const desktop = await runtime.execute('desktop', { id: 'exp-desktop', requirementId: 'R-1', type: 'browser', tool: 'desktop', description: 'checkout workflow', status: 'pending', attempts: 0, evidenceIds: [] });
-  assert.equal(desktop.status, 'pass');
-  assert.ok(desktop.evidence.every((item) => item.executed === true));
+  assert.equal(desktop.status, 'unknown');
+  assert.deepEqual(desktop.evidence, []);
   const security = await runtime.execute('security', { id: 'exp-security', requirementId: 'R-2', type: 'security', tool: 'security', description: 'scoped checkout security probe', status: 'pending', attempts: 0, evidenceIds: [] });
-  assert.equal(security.status, 'pass');
-  assert.match(JSON.stringify(security.evidence), /scope/i);
+  assert.equal(security.status, 'unknown');
+  assert.deepEqual(security.evidence, []);
 });
 
-test('flagship verification reproduces latency failure and verifies repair twice from clean state', async () => {
-  for (let i = 0; i < 2; i += 1) {
-    const result = await runFlagshipVerification({ runId: `demo-${i}` });
-    assert.equal(result.before.verdict, 'FAILED');
-    assert.equal(result.after.verdict, 'VERIFIED');
-    assert.equal(result.regressions, 0);
-    assert.equal(result.chaosRestored, true);
-    assert.ok(result.evidence.length >= 5);
-  }
+test('legacy flagship helper refuses to fabricate proof without a real target', async () => {
+  const result = await runFlagshipVerification({ runId: 'legacy-truth-test', targetUrl: '' });
+  assert.equal(result.status, 'incomplete');
+  assert.equal(result.overall, 'Incomplete');
+  assert.deepEqual(result.evidence, []);
+  assert.match(result.reason, /real Strands swarm|target/i);
 });
 
 test('public site exposes the complete Deep Audit story with live audit CTAs', async () => {
@@ -68,7 +65,7 @@ test('public site exposes the complete Deep Audit story with live audit CTAs', a
   assert.match(js, /verified/);
 });
 
-test('demo web endpoint executes the flagship verification used by the UI', async () => {
+test('fabricated flagship HTTP endpoint is removed from the public server', async () => {
   const server = createDemoServer();
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -76,13 +73,7 @@ test('demo web endpoint executes the flagship verification used by the UI', asyn
     const address = server.address();
     assert.ok(address && typeof address === 'object');
     const response = await fetch(`http://127.0.0.1:${address.port}/api/demo/flagship`, { method: 'POST' });
-    assert.equal(response.status, 200);
-    const payload = await response.json();
-    assert.equal(payload.run.before.verdict, 'FAILED');
-    assert.equal(payload.run.after.verdict, 'VERIFIED');
-    assert.equal(payload.run.regressions, 0);
-    assert.equal(payload.run.chaosRestored, true);
-    assert.ok(payload.run.evidence.length >= 5);
+    assert.equal(response.status, 405);
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
