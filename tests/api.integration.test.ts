@@ -15,6 +15,7 @@ test('api exposes health, deterministic planning and repository import endpoints
   const transport: GitHubTransport = {
     async request(method, path) {
       if (path === '/login/oauth/access_token') return { access_token: 'token-1' } as any;
+      if (path === '/user') return { login: 'octocat', name: 'Octo Cat', avatar_url: 'https://example.test/octocat.png', email: 'octocat@example.test' } as any;
       if (path === '/user/repos') return [{ full_name: 'acme/shop', html_url: 'https://github.com/acme/shop', default_branch: 'main' }] as any;
       if (path === '/repos/acme/shop/commits/main') return { sha: 'abc123' } as any;
       if (path === '/repos/acme/shop/branches') return [{ name: 'main', commit: { sha: 'abc123' } }] as any;
@@ -30,7 +31,7 @@ test('api exposes health, deterministic planning and repository import endpoints
     ['desktop', async () => ({ status: 'pass', evidence: [{ kind: 'screenshot', source: 'desktop', executed: true, payload: { outcome: 'pass' } }] })],
   ]);
   const runs = new RunService(new VerificationOrchestrator(runners));
-  const server = createApiServer({ oauth, importer, runs });
+  const server = createApiServer({ oauth, importer, runs, webUrl: 'http://localhost:4173', secureCookies: false });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const address = server.address() as any;
   const base = `http://127.0.0.1:${address.port}`;
@@ -38,6 +39,44 @@ test('api exposes health, deterministic planning and repository import endpoints
   try {
     const health = await fetch(`${base}/health`);
     assert.equal(health.status, 200);
+
+    const browserStart = await fetch(`${base}/api/auth/github`, { redirect: 'manual' });
+    assert.equal(browserStart.status, 302);
+    const browserCookie = browserStart.headers.get('set-cookie')?.split(';')[0];
+    const authorizeLocation = browserStart.headers.get('location');
+    assert.ok(browserCookie);
+    assert.ok(authorizeLocation);
+    const browserState = new URL(authorizeLocation!).searchParams.get('state');
+    assert.ok(browserState);
+
+    const browserCallback = await fetch(`${base}/api/auth/github/callback?code=browser-code&state=${encodeURIComponent(browserState!)}`, {
+      headers: { cookie: browserCookie! },
+      redirect: 'manual',
+    });
+    assert.equal(browserCallback.status, 302);
+    assert.match(browserCallback.headers.get('location') || '', /auth=github/);
+
+    const me = await fetch(`${base}/api/auth/me`, { headers: { cookie: browserCookie! } });
+    assert.equal(me.status, 200);
+    const meBody = await me.json() as any;
+    assert.equal(meBody.authenticated, true);
+    assert.equal(meBody.user.login, 'octocat');
+
+    const browserRepos = await fetch(`${base}/api/github/repositories`, { headers: { cookie: browserCookie! } });
+    assert.equal(browserRepos.status, 200);
+    assert.equal(((await browserRepos.json()) as any).repositories[0].fullName, 'acme/shop');
+
+    const browserImport = await fetch(`${base}/api/projects/import`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: browserCookie! },
+      body: JSON.stringify({ fullName: 'acme/shop', branch: 'main', name: 'Browser Shop' }),
+    });
+    assert.equal(browserImport.status, 201);
+
+    const logout = await fetch(`${base}/api/auth/logout`, { method: 'POST', headers: { cookie: browserCookie! } });
+    assert.equal(logout.status, 200);
+    const afterLogout = await fetch(`${base}/api/auth/me`, { headers: { cookie: browserCookie! } });
+    assert.equal(afterLogout.status, 401);
 
     const start = await post(base, '/api/github/oauth/start', { sessionId: 's1' });
     assert.equal(start.status, 200);

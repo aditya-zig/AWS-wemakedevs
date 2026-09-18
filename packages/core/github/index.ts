@@ -21,6 +21,12 @@ export interface RepositorySummary {
 }
 
 export interface BranchSummary { name: string; commitSha: string; }
+export interface GitHubUser {
+  login: string;
+  name?: string;
+  avatarUrl?: string;
+  email?: string;
+}
 export interface ImportRepositoryInput { fullName: string; branch?: string; name?: string; }
 
 export class CredentialVault {
@@ -28,6 +34,7 @@ export class CredentialVault {
   set(sessionId: string, token: string): void { this.#tokens.set(sessionId, token); }
   get(sessionId: string): string | undefined { return this.#tokens.get(sessionId); }
   delete(sessionId: string): void { this.#tokens.delete(sessionId); }
+  has(sessionId: string): boolean { return this.#tokens.has(sessionId); }
 }
 
 function statePayload(sessionId: string, issuedAt: number): string { return `${sessionId}.${issuedAt}`; }
@@ -44,7 +51,7 @@ export class GitHubOAuthService {
     const payload = statePayload(sessionId, issuedAt);
     const signature = createHmac('sha256', this.config.stateSecret).update(payload).digest('base64url');
     const state = Buffer.from(`${payload}.${signature}`).toString('base64url');
-    const params = new URLSearchParams({ client_id: this.config.clientId, redirect_uri: this.config.callbackUrl, scope: 'repo read:user', state });
+    const params = new URLSearchParams({ client_id: this.config.clientId, redirect_uri: this.config.callbackUrl, scope: 'repo read:user user:email', state });
     return { authorizationUrl: `https://github.com/login/oauth/authorize?${params.toString()}`, state };
   }
 
@@ -61,6 +68,26 @@ export class GitHubOAuthService {
     let actual: any;
     try { actual = Buffer.from(signature, 'base64url'); } catch { throw new Error('Invalid OAuth state signature'); }
     if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) throw new Error('Invalid OAuth state signature');
+  }
+
+  isAuthenticated(sessionId: string): boolean {
+    return this.vault.has(sessionId);
+  }
+
+  async getAuthenticatedUser(sessionId: string): Promise<GitHubUser> {
+    const token = this.vault.get(sessionId);
+    if (!token) throw new Error('GitHub session is not authenticated');
+    const user = await this.transport.request<{ login: string; name?: string | null; avatar_url?: string | null; email?: string | null }>('GET', '/user', undefined, token);
+    return {
+      login: user.login,
+      ...(user.name ? { name: user.name } : {}),
+      ...(user.avatar_url ? { avatarUrl: user.avatar_url } : {}),
+      ...(user.email ? { email: user.email } : {}),
+    };
+  }
+
+  logout(sessionId: string): void {
+    this.vault.delete(sessionId);
   }
 
   async handleCallback(sessionId: string, code: string, state: string): Promise<void> {

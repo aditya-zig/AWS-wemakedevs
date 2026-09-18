@@ -12,6 +12,7 @@ test('oauth state is validated and tokens stay out of stored project metadata', 
   const transport: GitHubTransport = {
     async request(method, path, body) {
       if (path === '/login/oauth/access_token') return { access_token: 'secret-token' } as any;
+      if (path === '/user') return { login: 'octocat', name: 'Octo Cat', avatar_url: 'https://example.test/octocat.png', email: 'octocat@example.test' } as any;
       if (path === '/user/repos') return [{ full_name: 'acme/shop', html_url: 'https://github.com/acme/shop', default_branch: 'main' }] as any;
       if (path === '/repos/acme/shop/branches') return [{ name: 'main', commit: { sha: 'abc123' } }] as any;
       if (path === '/repos/acme/shop/commits/main') return { sha: 'abc123' } as any;
@@ -25,6 +26,8 @@ test('oauth state is validated and tokens stay out of stored project metadata', 
   assert.ok(authorizationUrl.includes('client_id=client'));
   await oauth.handleCallback('session-1', 'code-123', state);
   assert.equal(vault.get('session-1'), 'secret-token');
+  assert.equal(oauth.isAuthenticated('session-1'), true);
+  assert.equal((await oauth.getAuthenticatedUser('session-1')).login, 'octocat');
 
   await assert.rejects(() => oauth.handleCallback('session-2', 'code-123', state), /state/i);
 
@@ -36,4 +39,6 @@ test('oauth state is validated and tokens stay out of stored project metadata', 
   assert.equal(project.commitSha, 'abc123');
   assert.equal(JSON.stringify(project).includes('secret-token'), false);
   assert.equal(JSON.stringify(store.snapshot()).includes('secret-token'), false);
+  oauth.logout('session-1');
+  assert.equal(oauth.isAuthenticated('session-1'), false);
 });

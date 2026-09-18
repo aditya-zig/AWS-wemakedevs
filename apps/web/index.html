@@ -733,7 +733,7 @@ h3 { font-size: 17px; line-height: 1.25; letter-spacing: -.01em; margin-bottom: 
     return `<header class="app-header"><div class="header-inner">
       ${brand()}
       <div class="muted small mono">${C.DEMO_DATA.project.repo}</div>
-      <div class="header-actions" style="margin-left:auto"><button class="btn sm" data-action="toast" data-message="Notifications are clear — no action needed.">Notifications</button><button class="btn sm ghost" data-action="toast" data-message="Prototype account menu opened.">AD</button></div>
+      <div class="header-actions" style="margin-left:auto"><button class="btn sm" data-action="toast" data-message="Notifications are clear — no action needed.">Notifications</button><button class="btn sm ghost" data-action="logout">Sign out</button></div>
     </div></header>`;
   }
 
@@ -858,10 +858,10 @@ regressions: 0</code></pre>
   function renderLogin() {
     return `${appHeader()}<div class="auth-wrap"><div class="auth-card">
       ${brand()}<h2>Start verifying</h2><p class="muted">Connect your repository and run the first evidence-backed verification.</p>
-      <div class="auth-buttons"><button class="btn primary" data-nav="dashboard">Continue with GitHub</button><button class="btn" data-nav="dashboard">Continue with Google</button></div>
+      <div class="auth-buttons"><button class="btn primary" data-action="github-oauth">Continue with GitHub</button><button class="btn" data-action="toast" data-message="Google OAuth is the next auth step after GitHub is verified.">Continue with Google</button></div>
       <div class="divider">or</div>
       <label class="label" for="email">Email</label><input id="email" class="input" type="email" placeholder="you@company.com" style="margin-top:7px" />
-      <button class="btn" style="width:100%;margin-top:10px" data-nav="dashboard">Continue with email</button>
+      <button class="btn" style="width:100%;margin-top:10px" data-action="toast" data-message="Email sign-in is not enabled in this hackathon build.">Continue with email</button>
       <p class="tiny muted" style="margin:18px 0 0">GitHub is prioritized because repository access is central to verification.</p>
     </div></div>`;
   }
@@ -874,9 +874,8 @@ regressions: 0</code></pre>
   }
 
   function renderRepository() {
-    const content = `<div class="card flat" style="overflow:hidden"><div style="padding:16px"><input class="search" aria-label="Search repositories" placeholder="Search repositories" value="my-store" /></div>
-      <div class="repo-row"><div><div class="repo-name">aditya-zig / my-store</div><div class="repo-meta"><span>Private</span><span>TypeScript</span><span>Updated 3 hours ago</span></div></div>${button('Import','analysis','primary')}</div>
-      <div class="repo-row"><div><div class="repo-name">aditya-zig / portfolio</div><div class="repo-meta"><span>Public</span><span>TypeScript</span><span>Updated 2 days ago</span></div></div><button class="btn sm" disabled>Import</button></div>
+    const content = `<div class="card flat" style="overflow:hidden"><div style="padding:16px"><input id="repositorySearch" class="search" aria-label="Search repositories" placeholder="Search repositories" /></div>
+      <div id="repositoryList"><div class="repo-row"><div><div class="repo-name">Loading GitHub repositories…</div><div class="repo-meta"><span>Your OAuth session stays server-side.</span></div></div></div></div>
     </div><div class="section card pad"><h3>GitHub permissions</h3><p class="muted small">VERIFIAI needs repository contents, branches and commits, plus permission to create branches or pull requests only after you approve a repair.</p><div class="tags"><span class="tag">Read contents</span><span class="tag">Read branches</span><span class="tag">Create repair branches</span><span class="tag">Optional PRs</span></div></div>`;
     return setupPage('Select a repository','Import the application you want VERIFIAI to run and verify.',1,content,`<button class="btn ghost" data-nav="dashboard">Back</button>`);
   }
@@ -1223,6 +1222,62 @@ regressions: 0</code></pre>
     }
   }
 
+  const API_BASE = window.VERIFIAI_API_BASE || ((location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? 'http://localhost:8787' : location.origin);
+
+  async function apiRequest(path, options = {}) {
+    const headers = { ...(options.headers || {}) };
+    if (options.body && !headers['content-type']) headers['content-type'] = 'application/json';
+    return fetch(`${API_BASE.replace(/\/$/, '')}${path}`, { ...options, headers, credentials: 'include' });
+  }
+
+  async function hydrateRepositoryScreen() {
+    if (state.screen !== 'repository') return;
+    const list = document.getElementById('repositoryList');
+    const search = document.getElementById('repositorySearch');
+    if (!list) return;
+    try {
+      const meResponse = await apiRequest('/api/auth/me');
+      if (meResponse.status === 401) {
+        list.innerHTML = '<div class="repo-row"><div><div class="repo-name">Connect GitHub to load your repositories</div><div class="repo-meta"><span>Authentication is required before repository import.</span></div></div><button class="btn primary sm" data-action="github-oauth">Connect GitHub</button></div>';
+        return;
+      }
+      if (!meResponse.ok) throw new Error(`Authentication check failed (HTTP ${meResponse.status})`);
+      const response = await apiRequest('/api/github/repositories');
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+      const repos = Array.isArray(payload.repositories) ? payload.repositories : [];
+      const renderRepos = (query = '') => {
+        const filtered = repos.filter(repo => repo.fullName.toLowerCase().includes(query.trim().toLowerCase()));
+        list.innerHTML = filtered.length ? filtered.map(repo => `<div class="repo-row" data-repository-row data-repository-name="${escapeHtml(repo.fullName)}"><div><div class="repo-name">${escapeHtml(repo.fullName)}</div><div class="repo-meta"><span>GitHub</span><span>Default branch: ${escapeHtml(repo.defaultBranch)}</span></div></div><button class="btn primary sm" data-import-repo="${escapeHtml(repo.fullName)}">Import</button></div>`).join('') : '<div class="repo-row"><div><div class="repo-name">No matching repositories</div><div class="repo-meta"><span>Try another search.</span></div></div></div>';
+      };
+      renderRepos();
+      search?.addEventListener('input', () => renderRepos(search.value));
+    } catch (error) {
+      list.innerHTML = `<div class="repo-row"><div><div class="repo-name">Could not load repositories</div><div class="repo-meta"><span>${escapeHtml(String(error?.message || error))}</span></div></div><button class="btn sm" data-action="github-oauth">Reconnect GitHub</button></div>`;
+    }
+  }
+
+  async function importGitHubRepository(fullName, buttonEl) {
+    buttonEl.disabled = true;
+    const original = buttonEl.textContent;
+    buttonEl.textContent = 'Importing…';
+    try {
+      const response = await apiRequest('/api/projects/import', { method: 'POST', body: JSON.stringify({ fullName }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+      const project = payload.project;
+      C.DEMO_DATA.project.name = project.name;
+      C.DEMO_DATA.project.repo = project.repository.fullName;
+      C.DEMO_DATA.project.branch = project.branch;
+      C.DEMO_DATA.project.commit = project.commitSha.slice(0, 7);
+      navigate('analysis');
+    } catch (error) {
+      showToast(`Import failed: ${String(error?.message || error)}`);
+      buttonEl.disabled = false;
+      buttonEl.textContent = original;
+    }
+  }
+
   function render() {
     clearInterval(startLandingFlow._timer);
     const renderer = renderers[state.screen] || renderers.landing;
@@ -1233,9 +1288,16 @@ regressions: 0</code></pre>
     document.title = `${C.SCREEN_META[state.screen]?.title || 'VERIFIAI'} — VERIFIAI`;
     requestAnimationFrame(startLandingFlow);
     if (state.screen === 'landing') requestAnimationFrame(() => { setupParticleText(); setupLandingMedia(); setupScrollExperience(); });
+    if (state.screen === 'repository') requestAnimationFrame(hydrateRepositoryScreen);
   }
 
   document.addEventListener('click', (event) => {
+    const importRepo = event.target.closest('[data-import-repo]');
+    if (importRepo) {
+      event.preventDefault();
+      importGitHubRepository(importRepo.dataset.importRepo, importRepo);
+      return;
+    }
     const scrollTarget = event.target.closest('[data-scroll-target]');
     if (scrollTarget) {
       const target=document.getElementById(scrollTarget.dataset.scrollTarget);
@@ -1253,7 +1315,11 @@ regressions: 0</code></pre>
     const action = event.target.closest('[data-action]');
     if (action) {
       const kind = action.dataset.action;
-      if (kind === 'toggle-live') {
+      if (kind === 'github-oauth') {
+        location.href = `${API_BASE.replace(/\/$/, '')}/api/auth/github`;
+      } else if (kind === 'logout') {
+        apiRequest('/api/auth/logout', { method: 'POST' }).finally(() => navigate('landing'));
+      } else if (kind === 'toggle-live') {
         state.livePreview = !state.livePreview;
         render();
       } else if (kind === 'scroll-demo') {

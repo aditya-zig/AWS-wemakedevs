@@ -12,6 +12,8 @@ function required(name: string): string {
 
 const port = Number(process.env.PORT || 8787);
 const dataDir = process.env.VERIFIAI_DATA_DIR || './data';
+const webUrl = process.env.VERIFIAI_WEB_URL || 'http://localhost:4173';
+const secureCookies = process.env.VERIFIAI_SECURE_COOKIES === 'true' || webUrl.startsWith('https://');
 const transport = new FetchGitHubTransport();
 const vault = new CredentialVault();
 const oauth = new GitHubOAuthService({
@@ -24,5 +26,5 @@ const importer = new RepositoryImportService(vault, transport, new JsonFileProje
 
 // Adapter-owned tools are injected here during integration. Missing tools resolve to UNKNOWN, never false PASS.
 const runs = new RunService(new VerificationOrchestrator(new Map()));
-const server = createApiServer({ oauth, importer, runs });
+const server = createApiServer({ oauth, importer, runs, webUrl, secureCookies });
 server.listen(port, '0.0.0.0', () => console.log(`VERIFIAI API listening on :${port}`));
