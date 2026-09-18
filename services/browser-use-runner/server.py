@@ -54,6 +54,7 @@ async def run_browser(body):
             "done": history.is_done(),
             "successful": history.is_successful(),
             "steps": history.number_of_steps(),
+            "summary": history.final_result() or f"Browser Use completed {history.number_of_steps()} steps.",
         }
     finally:
         try:
