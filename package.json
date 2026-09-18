@@ -25,6 +25,9 @@
     "@aws-sdk/client-secrets-manager": "^3.0.0",
     "@strands-agents/sdk": "1.18.0",
     "openai": "^6.45.0",
-    "@aws-sdk/client-bedrock-agentcore": "^3.0.0"
+    "@aws-sdk/client-bedrock-agentcore": "^3.0.0",
+    "@aws-sdk/client-codebuild": "^3.0.0",
+    "@aws-sdk/client-ecr": "^3.0.0",
+    "@aws-sdk/client-ecs": "^3.0.0"
   }
 }
