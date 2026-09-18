@@ -65,6 +65,12 @@ export function buildDockerRunSpec(
     'AWS_DEFAULT_REGION',
     'VERIFIAI_MODEL_SECRET_ID',
     'VERIFIAI_MODEL_SECRET_FIELD',
+    'VERIFIAI_EXTERNAL_ENGINE_URL',
+    'VERIFIAI_EXTERNAL_ENGINE_TOKEN',
+    'VERIFIAI_COMPUTER_USE_URL',
+    'VERIFIAI_COMPUTER_USE_TOKEN',
+    'VERIFIAI_MUTATION_SERVICE_URL',
+    'VERIFIAI_MUTATION_SERVICE_TOKEN',
     credentialEnv,
   ]);
   for (const name of [...forwarded]) if (!env[name]) forwarded.delete(name);
