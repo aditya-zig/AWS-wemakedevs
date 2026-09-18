@@ -29,7 +29,7 @@ async function resolveCommit(fullName, branch) {
 
 async function main() {
   const candidates = JSON.parse(await readFile(new URL('../config/e2e-repositories.json', import.meta.url), 'utf8'));
-  const requested = process.argv[2] || process.env.VERIFIAI_E2E_REPO || 'fastapi-full-stack';
+  const requested = process.argv[2] || process.env.VERIFIAI_E2E_REPO || 'owasp-juice-shop';
   const candidate = candidates.find((item) => item.id === requested);
   if (!candidate) throw new Error(`Unknown E2E repository '${requested}'. Valid: ${candidates.map((item) => item.id).join(', ')}`);
 
