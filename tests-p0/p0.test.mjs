@@ -47,7 +47,7 @@ test('flagship verification reproduces latency failure and verifies repair twice
   }
 });
 
-test('public site exposes the complete flagship story with live audit CTAs', async () => {
+test('public site exposes the complete Deep Audit story with live audit CTAs', async () => {
   const html = await readFile(new URL('../apps/web/index.html', import.meta.url), 'utf8');
   const js = await readFile(new URL('../apps/web/app.js', import.meta.url), 'utf8');
   for (const label of ['Audit your repo', 'Deep Audit', 'Live evidence', 'Evidence, not AI guesses', 'Create pull request']) {
@@ -61,8 +61,9 @@ test('public site exposes the complete flagship story with live audit CTAs', asy
   assert.match(html, /installableAppInput/);
   assert.match(html, /tempTokenInput/);
   assert.match(js, /runResult/);
-  assert.match(js, /FAILED/);
-  assert.match(js, /VERIFIED/);
+  assert.match(js, /Confirmed/);
+  assert.match(js, /Incomplete/);
+  assert.match(js, /verified/);
 });
 
 test('demo web endpoint executes the flagship verification used by the UI', async () => {
