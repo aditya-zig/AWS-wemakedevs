@@ -1,0 +1,32 @@
+[
+  {
+    "id": "fastapi-full-stack",
+    "fullName": "fastapi/full-stack-fastapi-template",
+    "branch": "master",
+    "dockerfile": "backend/Dockerfile",
+    "containerPort": 8000,
+    "healthPath": "/api/v1/utils/health-check/",
+    "preferredFinal": true,
+    "objective": "Audit a recognizable full-stack web application with frontend and API behavior. Exercise real user journeys, API behavior, repository/security inspection and bounded performance discovery. Report only executed evidence."
+  },
+  {
+    "id": "owasp-juice-shop",
+    "fullName": "juice-shop/juice-shop",
+    "branch": "master",
+    "dockerfile": "Dockerfile",
+    "containerPort": 3000,
+    "healthPath": "/rest/admin/application-version",
+    "preferredFinal": false,
+    "objective": "Audit a recognizable interactive web application. Treat documented intentionally vulnerable training behaviors as product context rather than automatically calling every designed challenge a regression. Focus on executed user behavior, runtime evidence and clearly scoped observations."
+  },
+  {
+    "id": "docker-welcome",
+    "fullName": "docker/welcome-to-docker",
+    "branch": "main",
+    "dockerfile": "Dockerfile",
+    "containerPort": 3000,
+    "healthPath": "/",
+    "preferredFinal": false,
+    "objective": "Audit a small recognizable web application as a low-complexity backup. Exercise the actual UI, repository structure, startup behavior and bounded performance checks. Report uncertainty when richer API behavior is not present."
+  }
+]
