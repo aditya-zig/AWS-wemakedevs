@@ -73,6 +73,8 @@ export class LiveAuditService {
       modelProfileId,
       target: input.target,
       computerUseUrl: this.env.VERIFIAI_COMPUTER_USE_URL,
+      browserUseUrl: this.env.VERIFIAI_BROWSER_USE_URL,
+      cuaUrl: this.env.VERIFIAI_CUA_URL,
       externalEngineUrl: this.env.VERIFIAI_EXTERNAL_ENGINE_URL,
     });
 
