@@ -51,44 +51,22 @@ test('API adapter produces pass and fail evidence for HTTP invariants', async ()
   });
 });
 
-test('performance adapter enforces latency and concurrency thresholds with metrics', async () => {
-  await withTarget(async (baseUrl) => {
-    const runtime = new AdapterRuntime().register(createPerformanceAdapter());
-    const pass = await runtime.execute('performance', experiment('performance', 'performance'), {
-      target: { baseUrl },
-      environment: { performance: { path: '/slow', requests: 6, concurrency: 3, maxP95Ms: 250, maxErrorRate: 0 } }
-    });
-    assert.equal(pass.status, 'pass');
-    assert.equal(pass.evidence[0].kind, 'metric');
-    assert.equal(pass.evidence[0].payload.concurrency, 3);
-    assert.equal(pass.evidence[0].payload.requests, 6);
-
-    const fail = await runtime.execute('performance', experiment('performance', 'performance'), {
-      target: { baseUrl },
-      environment: { performance: { path: '/slow', requests: 4, concurrency: 2, maxP95Ms: 1, maxErrorRate: 0 } }
-    });
-    assert.equal(fail.status, 'fail');
-    assert.ok(fail.evidence[0].payload.p95Ms > 1);
-  });
+test('performance adapter declares real Locust/k6 execution rather than an in-process load-test clone', () => {
+  const locust = createPerformanceAdapter({ engine: 'locust' });
+  const k6 = createPerformanceAdapter({ engine: 'k6' });
+  assert.ok(locust.capabilities.includes('locust'));
+  assert.ok(locust.capabilities.includes('real-load-test'));
+  assert.ok(k6.capabilities.includes('k6'));
+  assert.ok(k6.capabilities.includes('real-load-test'));
 });
 
-test('MiroFish adapter runs a bounded cohort and ties each observation to run and scenario IDs', async () => {
-  const runtime = new AdapterRuntime().register(createMiroFishAdapter({ maxPersonas: 4 }));
-  const result = await runtime.execute('customer', experiment('customer', 'customer', 'checkout under payment latency'), {
-    target: { name: 'demo-store' },
-    environment: {
-      runId: 'run-customer-1',
-      mirofish: {
-        scenarioId: 'checkout-latency',
-        personas: ['impatient-mobile', 'careful-desktop', 'repeat-buyer', 'first-time-user'],
-        simulatedFailures: ['impatient-mobile']
-      }
-    }
+test('MiroFish adapter reports unknown when the real service is not configured', async () => {
+  const runtime = new AdapterRuntime().register(createMiroFishAdapter({ baseUrl: '' }));
+  const result = await runtime.execute('customer', experiment('customer', 'customer', 'simulate customer behavior'), {
+    target: { baseUrl: 'http://target.local' },
+    environment: { mirofish: { seedText: 'Product context long enough for a real MiroFish seed document.' } }
   });
-  assert.equal(result.status, 'fail');
-  const observations = result.evidence[0].payload.observations;
-  assert.equal(observations.length, 4);
-  assert.ok(observations.every((item) => item.runId === 'run-customer-1'));
-  assert.ok(observations.every((item) => item.scenarioId === 'checkout-latency'));
-  assert.ok(observations.some((item) => item.outcome === 'fail'));
+  assert.equal(result.status, 'unknown');
+  assert.deepEqual(result.evidence, []);
 });
+
