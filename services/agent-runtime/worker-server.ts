@@ -11,6 +11,7 @@ import {
   type EvidenceFindingState,
 } from '../../packages/contracts/src/index.js';
 import { resolveModelRunSelection, type ModelProviderName } from './providers.js';
+import { createWorkerTools } from './worker-tools.js';
 
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -54,22 +55,41 @@ function findingState(value: unknown): EvidenceFindingState {
   return value === 'Confirmed' || value === 'Unconfirmed' || value === 'Unknown' || value === 'Incomplete' ? value : 'Unknown';
 }
 
-function normalizeReport(brief: AgentWorkerLaunchBrief, value: any): AgentWorkerReport {
+function normalizeReport(brief: AgentWorkerLaunchBrief, value: any, evidence: any[]): AgentWorkerReport {
   const findings = Array.isArray(value?.findings) ? value.findings.filter((item: unknown) => typeof item === 'string').slice(0, 25) : [];
   const summary = typeof value?.summary === 'string' && value.summary.trim() ? value.summary.trim() : 'Worker completed without a summary.';
+  const requestedState = findingState(value?.findingState);
+  const hasFailingEvidence = evidence.some((item) => item?.executed === true && item?.source !== 'llm' && item?.payload?.outcome === 'fail');
+  const normalizedState = requestedState === 'Confirmed' && !hasFailingEvidence ? 'Unconfirmed' : requestedState;
+  const allowedFollowUpRoles = new Set(['hypothesis', 'investigator', 'judge', 'reverification']);
+  const followUps = (Array.isArray(value?.followUps) ? value.followUps : []).flatMap((followUp: any) => {
+    if (!allowedFollowUpRoles.has(followUp?.role)) return [];
+    if (typeof followUp?.objective !== 'string' || !followUp.objective.trim()) return [];
+    if (typeof followUp?.reason !== 'string' || !followUp.reason.trim()) return [];
+    return [{
+      role: followUp.role,
+      objective: followUp.objective.trim(),
+      evidenceRefs: Array.isArray(followUp.evidenceRefs) ? followUp.evidenceRefs.filter((item: unknown) => typeof item === 'string').slice(0, 50) : [],
+      reason: followUp.reason.trim(),
+    }];
+  }).slice(0, 4);
+  const evidenceRefs = [
+    ...brief.evidenceRefs,
+    ...evidence.map((_, index) => `worker:${brief.workerId}:evidence:${index + 1}`),
+  ];
   return {
     contractVersion: AGENT_WORKER_CONTRACT_VERSION,
     auditId: brief.auditId,
     workerId: brief.workerId,
     role: brief.role,
-    outcome: 'completed',
-    // A lifecycle-only worker has no executed tool evidence yet. It must not claim a confirmed finding.
-    findingState: findingState(value?.findingState) === 'Confirmed' ? 'Unknown' : findingState(value?.findingState),
+    outcome: value?.outcome === 'incomplete' ? 'incomplete' : value?.outcome === 'failed' ? 'failed' : 'completed',
+    findingState: normalizedState,
     summary,
     findings,
-    evidence: [],
-    evidenceRefs: [...brief.evidenceRefs],
-    followUps: [],
+    evidence,
+    evidenceRefs,
+    followUps,
+    error: typeof value?.error === 'string' ? value.error : undefined,
   };
 }
 
@@ -86,16 +106,30 @@ export async function executeAgentCoreWorker(
     clientConfig: { baseURL: selection.baseUrl },
     modelId: selection.modelId,
   });
+  const toolBundle = createWorkerTools(brief, onEvent);
   const agent = new Agent({
     model,
     printer: false,
+    tools: toolBundle.tools,
     systemPrompt: [
       `You are the isolated VERIFIAI ${brief.role} worker.`,
       'You are one worker in an audit and cannot talk to peer workers.',
-      'Never invent executed evidence or claim Confirmed without executed tool evidence.',
-      'At this lifecycle stage, inspect only the structured brief and return a scoped analysis.',
-      'Return JSON only: {"summary":"...","findings":["..."],"findingState":"Unknown|Unconfirmed|Incomplete"}.',
-    ].join(' '),
+      'Use only the tools granted to you. Execute relevant checks instead of guessing.',
+      'Never invent executed evidence. Confirmed requires executed failing evidence from a tool.',
+      'If the assigned lane cannot be executed because a required tool or target is absent, return outcome=incomplete and explain the exact limitation.',
+      brief.role === 'browser-app-user'
+        ? 'Generate a bounded diverse set of user personas from the actual product context, use computer_use for real journeys when available, and branch only when observed behavior meaningfully differs.'
+        : '',
+      brief.role === 'judge'
+        ? 'Act independently. Resolve conflicting claims only from supplied/executed evidence; do not trust another worker conclusion by itself.'
+        : '',
+      brief.role === 'repair'
+        ? 'You may propose or apply mutations only on an isolated-mutation target and must never verify your own repair.'
+        : '',
+      'Suspicious or conflicting evidence may request a narrow follow-up investigator/judge/reverification worker.',
+      'Return JSON only with keys: outcome, summary, findings, findingState, followUps.',
+      'followUps shape: [{"role":"hypothesis|investigator|judge|reverification","objective":"...","evidenceRefs":[],"reason":"..."}].',
+    ].filter(Boolean).join(' '),
   });
 
   await onEvent({
@@ -117,11 +151,11 @@ export async function executeAgentCoreWorker(
     constraints: brief.constraints,
   };
   const response = await agent.invoke([
-    'Analyze this assigned objective within the supplied scope.',
-    'Do not say tools ran unless there is executed evidence in the brief.',
+    'Execute the assigned objective within the supplied scope using available tools.',
+    'Treat tool results as evidence. If no applicable tool can run, report that truthfully.',
     JSON.stringify(safeBrief),
   ].join('\n'));
-  return normalizeReport(brief, parseJson(messageText((response as any).lastMessage)));
+  return normalizeReport(brief, parseJson(messageText((response as any).lastMessage)), toolBundle.evidence);
 }
 
 function writeEnvelope(res: ServerResponse, value: unknown): void {
