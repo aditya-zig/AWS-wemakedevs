@@ -71,7 +71,7 @@ test('A04 launcher maps a structured brief to AgentCore invoke and proves teardo
     client,
     defaultRuntime: { region: 'us-west-2', runtimeArn: 'arn:aws:bedrock-agentcore:us-west-2:123456789012:runtime/verifiai-worker' },
   });
-  const session = await launcher.launch(brief(), async (event) => events.push(event));
+  const session = await launcher.launch(brief(), async (event) => { events.push(event); });
   const report = await session.result;
   await launcher.teardown(session);
 
