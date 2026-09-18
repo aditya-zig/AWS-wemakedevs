@@ -11,23 +11,50 @@ function closeDrawer(){const d=$('#drawer');d?.classList.remove('open');d?.setAt
 function setProgress(index,state='active'){$$('#progress>div').forEach((row,i)=>{row.classList.remove('active','done');if(i<index)row.classList.add('done');if(i===index)row.classList.add(state);const s=$('small',row);if(s)s.textContent=i<index||state==='done'&&i===index?'Done':i===index?'Running':'Waiting'})}
 function resultCard(run,error=''){const host=$('#drawerResult');if(!host)return;if(error){host.innerHTML=`<div class="result"><span>INCOMPLETE</span><b>Audit could not finish</b><p>${esc(error)}</p></div>`;return}if(!run){host.innerHTML='';return}const confirmed=(run.findings||[]).filter(f=>f.state==='Confirmed').length,inc=run.coverage?.incomplete||0;host.innerHTML=`<div class="result"><span>${esc(run.overall||'Deep Audit')}</span><b>${confirmed} confirmed findings · ${run.coverage?.percentage||0}% coverage</b><p>${esc(run.findings?.[0]?.summary||'Audit completed with executed evidence.')}</p><p><strong>${run.engines?.length||0}</strong> engines · <strong>${inc}</strong> incomplete · estimated spend <strong>$${Number(run.guardrails?.estimatedRunSpendUsd||0).toFixed(2)}</strong> / $${Number(run.guardrails?.hardRunCapUsd||0).toFixed(2)}</p></div>`}
 
-function auditPayload(){const repository=$('#repoInput')?.value?.trim()||'github.com/acme/checkout',deployedUrl=$('#deployedUrlInput')?.value?.trim()||undefined,installableApp=$('#installableAppInput')?.value?.trim()||undefined,tempToken=$('#tempTokenInput')?.value||'';return{runId:`web-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,repository,deployedUrl,installableApp,credentials:tempToken?{TEMP_TOKEN:tempToken}:{},guardrails:{creditCeilingUsd:100,reserveUsd:15,maxRunUsd:2.5,maxHttpRequests:80,maxConcurrentEngines:4}}}
-
-async function pollLiveRun(runId){try{const response=await fetch(`/api/demo/deep-audit/${encodeURIComponent(runId)}`,{headers:{accept:'application/json'}});if(!response.ok)return;const payload=await response.json();if(payload.run){runResult=payload.run;applyRun(runResult);const status=$('#deepStatus');if(status)status.textContent=`Deep Audit running · ${runResult.engines?.length||0} engines reported · ${runResult.coverage?.percentage||0}% current coverage`}}catch{}}
-
+function auditPayload(){
+  let raw=$('#repoInput')?.value?.trim()||'aditya-zig/AWS-wemakedevs';
+  raw=raw.replace(/^https?:\/\/github\.com\//,'').replace(/^github\.com\//,'').replace(/\.git$/,'');
+  const [fullName,branch='main']=raw.split('#');
+  if(!/^[^/]+\/[^/]+$/.test(fullName))throw new Error('Use owner/repo or github.com/owner/repo. Add #branch if needed.');
+  const deployedUrl=$('#deployedUrlInput')?.value?.trim()||undefined;
+  return{
+    repository:{provider:'github',fullName,url:`https://github.com/${fullName}`,branch},
+    target:deployedUrl?{id:`target-${Date.now()}`,url:deployedUrl,environment:'shared-observation',immutable:true}:null,
+    objective:'Run a real Deep Audit with executed evidence. Separate confirmed issues, uncertainty, user-behavior insights and improvement opportunities.'
+  }
+}
+const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+function swarmResultCard(audit,error=''){
+  const host=$('#drawerResult');if(!host)return;
+  if(error){host.innerHTML=`<div class="result"><span>INCOMPLETE</span><b>Real swarm could not finish</b><p>${esc(error)}</p></div>`;return}
+  const state=audit?.state, reports=state?.reports||[];
+  const confirmed=reports.filter(r=>r.findingState==='Confirmed').reduce((n,r)=>n+(r.findings?.length||0),0);
+  host.innerHTML=`<div class="result"><span>${esc(audit?.mode||'real swarm').toUpperCase()}</span><b>${confirmed} confirmed issues · ${state?.plan?.tasks?.length||0} workers planned</b><p>${esc(audit?.result?.outcome||state?.finished?'Audit finished':'Audit running')}</p><p><strong>${state?.activeWorkerIds?.length||0}</strong> active · <strong>${state?.evidence?.length||0}</strong> evidence · estimated spend <strong>${Number(state?.guardrails?.estimatedSpendUsd||0).toFixed(2)}</strong> / ${Number(state?.guardrails?.hardRunSpendUsd||0).toFixed(2)}</p></div>`;
+}
+async function fetchSwarm(auditId){
+  const response=await fetch(`/api/audits/${encodeURIComponent(auditId)}/swarm`,{headers:{accept:'application/json'}});
+  const payload=await response.json();if(!response.ok)throw new Error(payload.error||`HTTP ${response.status}`);
+  return payload.audit;
+}
 async function runFlagshipAudit({drawer=true}={}){
-  if(auditRunning)return runResult;auditRunning=true;if(drawer)openDrawer();resultCard(null);setProgress(0,'done');
-  const status=$('#deepStatus');if(status)status.textContent='Discovering repo and launching the default Deep Audit…';
-  const request=auditPayload();runResult={runId:request.runId,status:'starting',engines:[],findings:[],coverage:{total:0,tested:0,incomplete:0,unknown:0,percentage:0},events:[]};
-  let i=1;const timer=reducedMotion?null:setInterval(()=>{if(i<4)setProgress(i++)},650),liveTimer=setInterval(()=>pollLiveRun(request.runId),300);
+  if(auditRunning)return runResult;auditRunning=true;if(drawer)openDrawer();swarmResultCard(null);setProgress(0,'done');
+  const status=$('#deepStatus');if(status)status.textContent='Resolving the exact commit and launching the real Strands swarm…';
+  let i=1;const timer=reducedMotion?null:setInterval(()=>{if(i<3)setProgress(i++)},900);
   try{
-    const response=await fetch('/api/demo/deep-audit',{method:'POST',headers:{accept:'application/json','content-type':'application/json'},body:JSON.stringify(request)});
+    const request=auditPayload();
+    const response=await fetch('/api/audits',{method:'POST',headers:{accept:'application/json','content-type':'application/json'},body:JSON.stringify(request)});
     const payload=await response.json();if(!response.ok)throw new Error(payload.error||`HTTP ${response.status}`);
-    runResult=payload.run;setProgress(3,'done');resultCard(runResult);applyRun(runResult);
-    if(status)status.textContent=`${runResult.overall} · ${runResult.coverage.percentage}% coverage · ${Number(runResult.guardrails.estimatedRunSpendUsd).toFixed(2)} estimated`;
-    toast(`Deep Audit complete: ${runResult.findings.filter(f=>f.state==='Confirmed').length} confirmed findings`);return runResult;
-  }catch(e){const msg=String(e?.message??e);resultCard(null,msg);if(status)status.textContent=`Audit incomplete: ${msg}`;toast('Audit incomplete. Exact reason shown.');return null}
-  finally{if(timer)clearInterval(timer);clearInterval(liveTimer);auditRunning=false}
+    runResult=payload.audit;applySwarm(runResult);swarmResultCard(runResult);
+    while(!runResult.state?.finished&&!runResult.error){
+      await delay(500);runResult=await fetchSwarm(runResult.auditId);applySwarm(runResult);swarmResultCard(runResult);
+    }
+    if(runResult.error)throw new Error(runResult.error);
+    setProgress(3,'done');applySwarm(runResult);swarmResultCard(runResult);
+    const confirmed=(runResult.state?.reports||[]).filter(r=>r.findingState==='Confirmed').reduce((n,r)=>n+(r.findings?.length||0),0);
+    if(status)status.textContent=`${runResult.result?.outcome||'completed'} · ${runResult.state?.plan?.tasks?.length||0} workers · ${runResult.state?.evidence?.length||0} evidence items`;
+    toast(`Real Deep Audit complete: ${confirmed} confirmed issues`);return runResult;
+  }catch(e){const msg=String(e?.message??e);swarmResultCard(null,msg);if(status)status.textContent=`Audit incomplete: ${msg}`;toast('Audit incomplete. Exact reason shown.');return null}
+  finally{if(timer)clearInterval(timer);auditRunning=false}
 }
 
 function applyRun(run){
@@ -40,6 +67,18 @@ function applyRun(run){
   const stats=$$('.proofstats div b');if(stats.length>=3&&run.fix){stats[0].textContent=`${run.fix.before.reproduced}/${run.fix.before.attempts}`;stats[1].textContent=`${run.fix.targeted.passed}/${run.fix.targeted.total}`;stats[2].textContent=String(run.fix.regressionFailures)}
   const proof=$('.proof');if(proof&&run.fix){let diff=$('#fixDiff');if(!diff){diff=document.createElement('div');diff.id='fixDiff';diff.className='fix-diff';proof.prepend(diff)}diff.innerHTML=`<small>Sandbox patch</small><pre>${esc(run.fix.patch||'No patch available')}</pre><div class="regression-list">${(run.fix.regressions||[]).map(r=>`<span>${esc(r.name)} <b>${esc(r.status)}</b></span>`).join('')}</div>`;const player=$('.player span',proof);if(player&&run.fix.proofVideo)player.textContent=`Proof-of-fix · ${String(run.fix.proofVideo.durationSeconds||0).padStart(2,'0')}s · redacted`}
   const create=$('#createPr');if(create){create.disabled=!run.fix?.pr?.ready;create.textContent=run.fix?.pr?.ready?'Create pull request':'PR blocked until verified'}
+}
+
+function applySwarm(audit){
+  const state=audit?.state||{},plan=state.plan||{tasks:[]},events=state.events||[],reports=state.reports||[];
+  const feed=$('#feed');if(feed){feed.innerHTML='';events.slice(-14).forEach(ev=>{const d=document.createElement('div');d.className=/incomplete|fail|error/i.test(ev.type||'')?'alert new':'new';const time=ev.at?new Date(ev.at).toLocaleTimeString([],{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'}):'';d.innerHTML=`<time>${esc(time)}</time><span>${esc(ev.message||ev.type||'worker activity')}</span>`;feed.append(d)})}
+  const count=$('#evidenceCount');if(count)count.textContent=`${state.evidence?.length||0} executed evidence items · ${state.activeWorkerIds?.length||0} workers active`;
+  const list=$('#agentList');if(list){list.innerHTML=(plan.tasks||[]).map(task=>{const report=reports.find(r=>r.role===task.role&&r.workerId&&events.some(ev=>ev.workerId===r.workerId));const workerEvents=events.filter(ev=>report&&ev.workerId===report.workerId);const evidenceEvents=workerEvents.filter(ev=>ev.type==='worker.evidence');const captures=evidenceEvents.filter(ev=>ev.evidence?.source==='computer-use');const status=task.state==='completed'?'Verified':task.state==='skipped'?'Skipped':task.state==='incomplete'?'Incomplete':task.state==='failed'?'Failed':task.state==='running'?'Running':'Queued';const cls=task.state==='completed'?'ok':task.state==='skipped'?'idle':'';return`<li class="swarm-card"><i class="${cls}"></i><span><b>${esc(task.role)}</b><small>${esc(task.objective)}</small><details><summary>Evidence & activity</summary><small>${esc(task.skipReason||task.lastError||'')}${task.skipReason||task.lastError?'<br>':''}${evidenceEvents.length} evidence · ${workerEvents.length} events · ${captures.length} browser captures</small></details></span><small>${esc(status)}</small></li>`}).join('')}
+  const confirmed=[],uncertain=[],behavior=[],improvements=[];
+  reports.forEach(r=>{const items=(r.findings?.length?r.findings:[r.summary]).filter(Boolean);if(r.role==='browser-app-user')behavior.push(...items.map(text=>({text,r})));else if(r.role==='performance-discovery'&&r.findingState!=='Confirmed')improvements.push(...items.map(text=>({text,r})));else if(r.findingState==='Confirmed')confirmed.push(...items.map(text=>({text,r})));else uncertain.push(...items.map(text=>({text,r})))});
+  const bucket=(title,items)=>`<section class="finding-row"><div><span class="impact">${esc(title)}</span><em>${items.length}</em></div>${items.length?items.map(({text,r})=>`<h3>${esc(text)}</h3><p><b>${esc(r.role)}</b> · ${esc(r.findingState)} · ${r.evidence?.length||0} evidence</p>`).join(''):'<p class="muted">None yet.</p>'}</section>`;
+  const report=$('#reportBody');if(report)report.innerHTML=`<div class="meta"><span>REAL SWARM</span><em>${confirmed.length} Confirmed</em><small>${plan.tasks?.length||0} workers · ${state.evidence?.length||0} evidence</small></div><div class="finding-list">${bucket('Confirmed issues',confirmed)}${bucket('Unconfirmed / Unknown / Incomplete',uncertain)}${bucket('User-behavior insights',behavior)}${bucket('Improvement opportunities',improvements)}</div>`;
+  const status=$('#deepStatus');if(status&&!state.finished)status.textContent=`${audit.mode} swarm · ${state.activeWorkerIds?.length||0} active · ${plan.tasks?.filter(t=>t.state==='queued').length||0} queued · ${Number(state.guardrails?.estimatedSpendUsd||0).toFixed(2)} estimated`;
 }
 
 function typeStatus(){
@@ -60,9 +99,11 @@ function scrollMotion(){let tick=false;const nav=$('#nav');const update=()=>{nav
 function cycleEngines(){if(reducedMotion)return;const nodes=$$('[data-engine]');let i=0;setInterval(()=>{nodes.forEach((n,j)=>n.classList.toggle('active',j===i));i=(i+1)%nodes.length},800)}
 function cards(){$$('.engine-card').forEach(card=>$('.expand',card)?.addEventListener('click',()=>card.classList.toggle('expanded')))}
 function reportTabs(){$$('.report-tab').forEach(tab=>tab.addEventListener('click',()=>{$$('.report-tab').forEach(t=>t.classList.remove('active'));tab.classList.add('active');$('#reportBody')?.animate?.([{opacity:.35,transform:'translateY(7px)'},{opacity:1,transform:'translateY(0)'}],{duration:reducedMotion?1:220,easing:'cubic-bezier(.2,.8,.2,1)'})}))}
-function steer(){$('#steerForm')?.addEventListener('submit',async e=>{e.preventDefault();const input=$('#steerInput'),resp=$('#chatResponse'),host=$('#branchCards');if(!input||!resp||!host)return;if(!runResult){resp.textContent='Run Deep Audit first so steering has live evidence to work from.';return}resp.textContent='Running a bounded follow-up against the current audit evidence…';try{const r=await fetch(`/api/demo/deep-audit/${encodeURIComponent(runResult.runId)}/steer`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({instruction:input.value})});const p=await r.json();if(!r.ok)throw new Error(p.error||`HTTP ${r.status}`);resp.textContent=p.event.message;const node=document.createElement('div');node.innerHTML=`<b>${esc(input.value||'Additional check')}</b><small>Evidence linked</small>`;host.append(node);toast('Steered investigation completed')}catch(err){resp.textContent=`Steering incomplete: ${String(err?.message??err)}`}})}
+function steer(){$('#steerForm')?.addEventListener('submit',async e=>{e.preventDefault();const input=$('#steerInput'),resp=$('#chatResponse'),host=$('#branchCards');if(!input||!resp||!host)return;if(!runResult?.auditId){resp.textContent='Run the real Deep Audit first so steering has live evidence to work from.';return}resp.textContent='Queueing a bounded investigator inside the live swarm…';try{const r=await fetch(`/api/audits/${encodeURIComponent(runResult.auditId)}/steer`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({objective:input.value})});const p=await r.json();if(!r.ok)throw new Error(p.error||`HTTP ${r.status}`);runResult=p.audit;applySwarm(runResult);resp.textContent='Investigator queued. It will use the current audit evidence and scoped tools.';const node=document.createElement('div');node.innerHTML=`<b>${esc(input.value||'Additional check')}</b><small>Queued investigator</small>`;host.append(node);toast('Investigator added to live swarm')}catch(err){resp.textContent=`Steering incomplete: ${String(err?.message??err)}`}})}
 function actions(){$$('[data-audit-trigger]').forEach(b=>b.addEventListener('click',openDrawer));$('#closeDrawer')?.addEventListener('click',closeDrawer);$('#backdrop')?.addEventListener('click',closeDrawer);$('#drawerRun')?.addEventListener('click',()=>runFlagshipAudit({drawer:false}));$('#watchAudit')?.addEventListener('click',()=>{$('#live-audit')?.scrollIntoView({behavior:reducedMotion?'auto':'smooth'});setTimeout(()=>runFlagshipAudit({drawer:false}),reducedMotion?0:420)});$('#runAuditFromConsole')?.addEventListener('click',()=>runFlagshipAudit({drawer:false}));$('#runDeepAudit')?.addEventListener('click',()=>runFlagshipAudit({drawer:false}));$('#createPr')?.addEventListener('click',async()=>{if(!runResult)return toast('Run Deep Audit first.');try{const r=await fetch(`/api/demo/deep-audit/${encodeURIComponent(runResult.runId)}/pr`,{method:'POST'});const p=await r.json();if(!r.ok)throw new Error(p.error||`HTTP ${r.status}`);toast(`PR package verified: ${p.pr.branch}. Human merge control retained.`)}catch(err){toast(`PR gate closed: ${String(err?.message??err)}`)}});$('#payDemo')?.addEventListener('click',()=>toast('Payment-timeout experiment replayed.'));addEventListener('keydown',e=>{if(e.key==='Escape')closeDrawer()})}
 function mobile(){$('#menu')?.addEventListener('click',()=>{const b=$('#menu'),n=$('#navlinks');const open=b.getAttribute('aria-expanded')==='true';b.setAttribute('aria-expanded',String(!open));n?.classList.toggle('mobile-open',!open)})}
 function agentCycle(){if(reducedMotion)return;let idx=0;setInterval(()=>{if(runResult?.runId)return;const rows=$$('#agentList li');if(!rows.length)return;rows.forEach((r,i)=>{const dot=$('i',r),s=$('small',r);if(i===idx){dot.className='';s.textContent='Running'}else if(i<idx){dot.className='ok';s.textContent='Verified'}});idx=(idx+1)%rows.length},1350)}
 
 reveal();counters();scrollMotion();cycleEngines();cards();reportTabs();steer();actions();mobile();agentCycle();typeStatus();rotateLine();
+
+if($('#repoInput')?.value==='github.com/acme/checkout')$('#repoInput').value='github.com/aditya-zig/AWS-wemakedevs';
