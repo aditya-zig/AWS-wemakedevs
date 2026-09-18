@@ -255,6 +255,7 @@ export interface AgentWorkerReport {
   evidence: EvidenceInput[];
   evidenceRefs: string[];
   followUps: AgentWorkerFollowUpRequest[];
+  verificationDecision?: 'pass' | 'fail' | 'unknown';
   error?: string;
 }
 
