@@ -430,13 +430,14 @@ function buildFindings(engines) {
   return findings;
 }
 
-function coverage(engines) {
-  const total = engines.length;
+function coverage(engines, totalOverride = null) {
+  const total = totalOverride ?? engines.length;
   const tested = engines.filter((e) => e.state === 'completed').length;
   const incomplete = engines.filter((e) => e.state === 'incomplete').length;
   const unknown = engines.filter((e) => e.state === 'unknown').length;
+  const pending = Math.max(0, total - engines.length);
   return {
-    total, tested, incomplete, unknown,
+    total, tested, incomplete, unknown, pending,
     confirmed: engines.filter((e) => e.confidence === 'Confirmed').length,
     percentage: total ? Math.round((tested / total) * 100) : 0,
     limitations: engines.filter((e) => e.state !== 'completed').map((e) => ({ engine: e.name, state: e.state, reason: e.reason }))
@@ -513,7 +514,7 @@ export class DeepAuditService {
       credentials: credentialMeta,
       engines: [],
       findings: [],
-      coverage: coverage([]),
+      coverage: coverage([], 10),
       guardrails: guard.snapshot(),
       events
     };
@@ -555,7 +556,7 @@ export class DeepAuditService {
         publish();
         const result = await task();
         liveState.engines.push(result);
-        liveState.coverage = coverage(liveState.engines);
+        liveState.coverage = coverage(liveState.engines, 10);
         liveState.findings = buildFindings(liveState.engines);
         events.push({ type: `engine.${result.state}`, at: now(), runId, engine: name, message: result.reason || result.observations[0] || result.status });
         publish();
@@ -602,7 +603,7 @@ export class DeepAuditService {
       engines.push(deployedEngine);
       liveState.engines.push(deployedEngine);
       events.push({ type: `engine.${deployedEngine.state}`, at: now(), runId, engine: 'deployed', message: deployedEngine.reason || deployedEngine.observations[0] || deployedEngine.status });
-      liveState.coverage = coverage(liveState.engines);
+      liveState.coverage = coverage(liveState.engines, 10);
       liveState.findings = buildFindings(liveState.engines);
       publish();
 
@@ -611,7 +612,7 @@ export class DeepAuditService {
       engines.push(installableEngine);
       liveState.engines.push(installableEngine);
       events.push({ type: `engine.${installableEngine.state}`, at: now(), runId, engine: 'installable', message: installableEngine.reason || installableEngine.observations[0] || installableEngine.status });
-      liveState.coverage = coverage(liveState.engines);
+      liveState.coverage = coverage(liveState.engines, 10);
       liveState.findings = buildFindings(liveState.engines);
       publish();
 
