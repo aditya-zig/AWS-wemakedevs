@@ -3,6 +3,7 @@ import { createApiServer } from './server.js';
 import { RunService } from './runs/service.js';
 import { CredentialVault, FetchGitHubTransport, GitHubOAuthService, JsonFileProjectStore, RepositoryImportService } from '../../packages/core/github/index.js';
 import { VerificationOrchestrator } from '../../packages/core/orchestrator/index.js';
+import { LiveAuditService } from './swarms/service.js';
 
 function required(name: string): string {
   const value = process.env[name];
@@ -26,5 +27,6 @@ const importer = new RepositoryImportService(vault, transport, new JsonFileProje
 
 // Adapter-owned tools are injected here during integration. Missing tools resolve to UNKNOWN, never false PASS.
 const runs = new RunService(new VerificationOrchestrator(new Map()));
-const server = createApiServer({ oauth, importer, runs, webUrl, secureCookies });
+const swarms = new LiveAuditService();
+const server = createApiServer({ oauth, importer, runs, swarms, webUrl, secureCookies });
 server.listen(port, '0.0.0.0', () => console.log(`VERIFIAI API listening on :${port}`));
