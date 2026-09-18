@@ -10,7 +10,7 @@
     "test:p0": "node --test tests-p0/*.test.mjs",
     "test:p1": "node --test tests-p1/*.test.mjs",
     "demo:e2e": "node scripts/demo-e2e.mjs",
-    "check": "npm run typecheck && npm test && npm run test:p0 && npm run test:p1 && npm run demo:e2e",
+    "check": "npm run external:policy && npm run typecheck && npm test && npm run test:p0 && npm run test:p1 && npm run demo:e2e",
     "external:clone": "node scripts/clone-external-engines.mjs",
     "external:policy": "node scripts/verify-external-engine-policy.mjs",
     "start:api": "node dist/apps/api/index.js",
@@ -18,7 +18,10 @@
     "start:web": "node scripts/serve-web.mjs",
     "agentcore:worker": "node dist/services/agent-runtime/worker-server.js",
     "verify:agentcore": "npm run build && node scripts/verify-agentcore-worker.mjs",
-    "verify:local-worker": "npm run build && node scripts/verify-local-worker.mjs"
+    "verify:local-worker": "npm run build && node scripts/verify-local-worker.mjs",
+    "external:up": "docker compose -f docker-compose.external.yml up --build",
+    "external:down": "docker compose -f docker-compose.external.yml down --remove-orphans",
+    "start:external-engines": "node services/external-engines/server.mjs"
   },
   "devDependencies": {
     "typescript": "^5.8.3"
