@@ -24,11 +24,11 @@ class VerifiaiUser(HttpUser):
 `, 'utf8');
   const prefix = join(dir, 'stats');
   const args = ['-f', locustfile, '--headless', '--host', baseUrl, '-u', String(users), '-r', String(spawnRate), '-t', `${durationSec}s`, '--csv', prefix, '--only-summary'];
-  const result = await runExternalCommand(cfg.command ?? 'locust', args, { timeoutMs: (durationSec + 30) * 1000, env: cfg.env });
+  const result = await runExternalCommand('locust', args, { timeoutMs: (durationSec + 30) * 1000 });
   const statsPath = `${prefix}_stats.csv`;
   const stats = await readFile(statsPath, 'utf8').catch(() => null);
   return {
-    engine: 'Locust', upstream: LOCUST, command: [cfg.command ?? 'locust', ...args], result,
+    engine: 'Locust', upstream: LOCUST, command: ['locust', ...args], result,
     artifacts: stats ? [statsPath] : [], rawReport: stats,
     outcome: result.exitCode === 0 ? 'pass' : result.exitCode == null ? 'unknown' : 'fail',
     experimentId: experiment.id,
@@ -49,35 +49,35 @@ export const options = { vus: ${vus}, duration: '${durationSec}s', thresholds: {
 export default function () { http.get(${JSON.stringify(new URL(path, baseUrl).toString())}); }
 `, 'utf8');
   const args = ['run', '--summary-export', summaryPath, scriptPath];
-  const result = await runExternalCommand(cfg.command ?? 'k6', args, { timeoutMs: (durationSec + 30) * 1000, env: cfg.env });
+  const result = await runExternalCommand('k6', args, { timeoutMs: (durationSec + 30) * 1000 });
   const report = await readFile(summaryPath, 'utf8').catch(() => null);
   return {
-    engine: 'k6', upstream: K6, command: [cfg.command ?? 'k6', ...args], result,
+    engine: 'k6', upstream: K6, command: ['k6', ...args], result,
     artifacts: report ? [summaryPath, scriptPath] : [scriptPath], rawReport: report,
     outcome: result.exitCode === 0 ? 'pass' : result.exitCode == null ? 'unknown' : 'fail',
     experimentId: experiment.id,
   };
 }
 
-export function createPerformanceAdapter() {
+export function createPerformanceAdapter({ engine = 'locust' } = {}) {
+  const selectedEngine = engine === 'k6' ? 'k6' : 'locust';
   let context = {};
   let captured = [];
   return {
     name: 'performance',
     capabilities: ['locust', 'k6', 'real-load-test'],
     async healthcheck() {
-      const engine = context.environment?.performance?.engine ?? 'locust';
-      const health = engine === 'k6'
+      const health = selectedEngine === 'k6'
         ? await commandHealth('k6', ['version'])
         : await commandHealth('locust', ['--version']);
       return { ok: health.ok, detail: health.detail };
     },
     async prepare(next = {}) { context = next; captured = []; },
     async execute(experiment) {
-      const cfg = context.environment?.performance ?? {};
+      const cfg = { ...(context.environment?.performance ?? {}), engine: selectedEngine };
       const baseUrl = context.target?.baseUrl;
       if (!baseUrl) return { status: 'unknown', observations: ['performance engine requires target.baseUrl'], evidence: [] };
-      const run = cfg.engine === 'k6' ? await runK6(cfg, baseUrl, experiment) : await runLocust(cfg, baseUrl, experiment);
+      const run = selectedEngine === 'k6' ? await runK6(cfg, baseUrl, experiment) : await runLocust(cfg, baseUrl, experiment);
       const evidence = {
         kind: 'metric',
         source: run.engine.toLowerCase(),
