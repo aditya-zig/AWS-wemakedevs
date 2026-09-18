@@ -7,9 +7,14 @@ const css = await readFile(new URL('../apps/web/styles.css', import.meta.url), '
 const js = await readFile(new URL('../apps/web/app.js', import.meta.url), 'utf8').catch(() => '');
 
 test('public site contains the complete VERIFIAI marketing story', () => {
-  for (const id of ['product','deep-audit','how-it-works','security','developers','live-audit','evidence','report','fix-verification','memory']) {
+  // The 18 Sep frontend consolidated the old deep-audit/report/fix anchors into
+  // the product demo + workflow application shell. Keep this assertion tied to
+  // the published DOM rather than obsolete prototype section IDs.
+  for (const id of ['product','demo','how','workflow','security','developers']) {
     assert.match(html, new RegExp(`id=["']${id}["']`), `missing #${id}`);
   }
+  assert.match(html, /Start Deep Audit/);
+  assert.match(html, /Evidence-backed/);
   assert.match(html, /Is your app actually ready for the real world\?/);
   assert.match(html, /Your users shouldn't be your first real-world test\./);
 });
