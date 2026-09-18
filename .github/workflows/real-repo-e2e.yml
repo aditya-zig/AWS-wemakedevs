@@ -6,12 +6,12 @@ on:
       repository:
         description: Real repository candidate
         required: true
-        default: fastapi-full-stack
+        default: owasp-juice-shop
         type: choice
         options:
-          - fastapi-full-stack
           - owasp-juice-shop
           - docker-welcome
+          - traefik-whoami
 
 permissions:
   id-token: write
