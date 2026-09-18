@@ -14,3 +14,7 @@ declare module 'node:url' { export const URL: any; }
 declare var process: any;
 
 declare var Buffer: any;
+
+declare module 'node:child_process' { export const execFile: any; export const spawn: any; export const execFileSync: any; }
+declare module 'node:util' { export const promisify: any; }
+declare module 'node:readline' { export const createInterface: any; }
