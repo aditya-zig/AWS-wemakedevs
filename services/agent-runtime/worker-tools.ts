@@ -47,8 +47,13 @@ export function createWorkerTools(
   const allowHosts = new Set(brief.constraints.networkAllowlist.map((value) => value.trim()).filter(Boolean));
   const targetUrl = brief.target?.url ? new URL(brief.target.url) : null;
   const externalEngineUrl = env.VERIFIAI_EXTERNAL_ENGINE_URL;
+  const browserUseUrl = env.VERIFIAI_BROWSER_USE_URL;
+  const cuaUrl = env.VERIFIAI_CUA_URL;
+  const computerUseUrl = env.VERIFIAI_COMPUTER_USE_URL;
   if (targetUrl) allowHosts.add(targetUrl.hostname);
-  if (externalEngineUrl) allowHosts.add(new URL(externalEngineUrl).hostname);
+  for (const serviceUrl of [externalEngineUrl, browserUseUrl, cuaUrl, computerUseUrl]) {
+    if (serviceUrl) allowHosts.add(new URL(serviceUrl).hostname);
+  }
   const policy = new WorkerNetworkPolicy([...allowHosts]);
   let toolCalls = 0;
 
@@ -379,40 +384,71 @@ export function createWorkerTools(
     }
   }
 
-  if (targetUrl && hasAny(caps, ['browser', 'desktop', 'computer-use', 'computer'])) {
-    const computerUseUrl = env.VERIFIAI_COMPUTER_USE_URL;
-    if (computerUseUrl) {
+  if (targetUrl && hasAny(caps, ['browser', 'desktop', 'computer-use', 'computer', 'browser-use', 'cua'])) {
+    const availableEngines = [
+      browserUseUrl ? 'browser-use' : null,
+      cuaUrl ? 'cua' : null,
+      computerUseUrl ? 'generic' : null,
+    ].filter(Boolean) as string[];
+
+    if (availableEngines.length) {
       tools.push(tool({
         name: 'computer_use',
-        description: 'Ask the run-scoped browser/computer-use service to execute a real user journey against the assigned target and return screenshots/action evidence.',
+        description: 'Execute a real user journey with Browser Use or Cua. The selected upstream service must return real actions/screenshots; no synthetic fallback is accepted.',
         inputSchema: z.object({
+          engine: z.enum(['browser-use', 'cua', 'generic']).default(browserUseUrl ? 'browser-use' : cuaUrl ? 'cua' : 'generic'),
           objective: z.string().min(1).max(2_000),
           persona: z.string().min(1).max(1_000).optional(),
         }),
-        callback: async ({ objective, persona }) => {
-          policy.assertUrl(computerUseUrl);
-          const response = await fetch(computerUseUrl, {
+        callback: async ({ engine, objective, persona }) => {
+          const serviceUrl = engine === 'browser-use' ? browserUseUrl : engine === 'cua' ? cuaUrl : computerUseUrl;
+          if (!serviceUrl) throw new Error(`${engine} computer-use service is not configured`);
+          policy.assertUrl(serviceUrl);
+          const endpoint = engine === 'generic' ? serviceUrl : new URL('/run', serviceUrl).toString();
+          const response = await fetch(endpoint, {
             method: 'POST',
             headers: {
               'content-type': 'application/json',
               ...(env.VERIFIAI_COMPUTER_USE_TOKEN ? { authorization: `Bearer ${env.VERIFIAI_COMPUTER_USE_TOKEN}` } : {}),
             },
-            body: JSON.stringify({ auditId: brief.auditId, workerId: brief.workerId, targetUrl: targetUrl.toString(), objective, persona }),
-            signal: AbortSignal.timeout(Math.min(60_000, brief.constraints.timeoutMs)),
+            body: JSON.stringify({
+              auditId: brief.auditId,
+              workerId: brief.workerId,
+              runId: `${brief.auditId}-${brief.workerId}`,
+              targetUrl: targetUrl.toString(),
+              objective,
+              persona,
+            }),
+            signal: AbortSignal.timeout(Math.min(brief.constraints.timeoutMs, 120_000)),
           });
-          const result: any = await response.json();
+          const result: any = await response.json().catch(() => ({}));
+          const expectedCommit = engine === 'browser-use'
+            ? 'd8110c5ff87ccba887aaa726cdb780f2f84bef8d'
+            : engine === 'cua'
+              ? '05f29785b508a4441ec3aa06c556a8e8b26c1d71'
+              : undefined;
+          const expectedEngine = engine === 'browser-use' ? 'Browser Use' : engine === 'cua' ? 'Cua' : undefined;
+          const identityOk = engine === 'generic' || (result?.engine === expectedEngine && result?.upstreamCommit === expectedCommit);
+          const executed = response.ok && result?.ok !== false && identityOk;
           const item: EvidenceInput = {
             kind: 'screenshot',
-            source: 'computer-use',
-            executed: true,
+            source: engine,
+            executed,
             payload: {
-              outcome: response.ok && result?.ok !== false ? 'pass' : 'fail',
+              engine: result?.engine ?? engine,
+              upstreamRepo: result?.upstreamRepo,
+              upstreamCommit: result?.upstreamCommit,
+              outcome: executed ? (result?.successful === false ? 'fail' : 'pass') : 'unknown',
               status: response.status,
               objective,
               persona,
+              targetUrl: targetUrl.toString(),
               screenshotRefs: Array.isArray(result?.screenshotRefs) ? result.screenshotRefs.slice(0, 20) : [],
               actions: Array.isArray(result?.actions) ? result.actions.slice(0, 100) : [],
+              urls: Array.isArray(result?.urls) ? result.urls.slice(0, 100) : [],
+              finalResult: typeof result?.finalResult === 'string' ? safeText(result.finalResult, 5_000) : undefined,
               summary: typeof result?.summary === 'string' ? safeText(result.summary, 5_000) : undefined,
+              identityVerified: identityOk,
             },
           };
           await record(item);
