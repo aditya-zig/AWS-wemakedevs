@@ -52,6 +52,12 @@ export function createDemoServer({ deepAudit = new DeepAuditService() } = {}) {
       }
     }
 
+    const runRoute = url.pathname.match(/^\/api\/demo\/deep-audit\/([^/]+)$/);
+    if (req.method === 'GET' && runRoute) {
+      const run = deepAudit.get(decodeURIComponent(runRoute[1]));
+      return run ? sendJson(res, 200, { run }) : sendJson(res, 404, { error: 'run not found' });
+    }
+
     const steerRoute = url.pathname.match(/^\/api\/demo\/deep-audit\/([^/]+)\/steer$/);
     if (req.method === 'POST' && steerRoute) {
       try {
