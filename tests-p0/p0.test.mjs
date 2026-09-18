@@ -47,11 +47,15 @@ test('flagship verification reproduces latency failure and verifies repair twice
   }
 });
 
-test('web demo exposes the complete flagship journey with no dead primary CTA', async () => {
+test('public site exposes the complete flagship story with live audit CTAs', async () => {
   const html = await readFile(new URL('../apps/web/index.html', import.meta.url), 'utf8');
   const js = await readFile(new URL('../apps/web/app.js', import.meta.url), 'utf8');
-  for (const label of ['Connect GitHub', 'Verification Lab', 'Failure Evidence', 'Approve & Verify', 'Fix Verified']) assert.match(`${html}\n${js}`, new RegExp(label.replace(/[&]/g, '&amp;|&'), 'i'));
-  assert.match(js, /nextStep/);
+  for (const label of ['Audit your repo', 'Deep Audit', 'Live evidence', 'Evidence, not AI guesses', 'Create pull request']) {
+    assert.match(`${html}\n${js}`, new RegExp(label, 'i'));
+  }
+  assert.match(html, /data-audit-trigger/);
+  assert.match(js, /openDrawer/);
+  assert.match(js, /runFlagshipAudit/);
   assert.match(js, /\/api\/demo\/flagship/);
   assert.match(js, /runResult/);
   assert.match(js, /FAILED/);
