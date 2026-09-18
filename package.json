@@ -28,6 +28,7 @@
     "@aws-sdk/client-bedrock-agentcore": "^3.0.0",
     "@aws-sdk/client-codebuild": "^3.0.0",
     "@aws-sdk/client-ecr": "^3.0.0",
-    "@aws-sdk/client-ecs": "^3.0.0"
+    "@aws-sdk/client-ecs": "^3.0.0",
+    "zod": "^3.25.0"
   }
 }
