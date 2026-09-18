@@ -71,7 +71,7 @@ export function createWorkerTools(
   };
 
   const executeExternalEngine = async (
-    engine: 'strix' | 'schemathesis' | 'locust' | 'k6' | 'toxiproxy',
+    engine: 'strix' | 'zap' | 'schemathesis' | 'locust' | 'k6' | 'toxiproxy',
     experiment: Record<string, unknown>,
     environment: Record<string, unknown> = {},
   ) => {
@@ -255,6 +255,25 @@ export function createWorkerTools(
           { strix: { target: targetUrl.toString(), scanMode, maxBudgetUsd: budget } },
         );
         return safeText(JSON.stringify({ status: result.status, observations: result.observations, health: result.health }), 8_000);
+      },
+    }));
+  }
+
+  if (externalEngineUrl && targetUrl && hasAny(caps, ['security', 'zap', 'dast'])) {
+    tools.push(tool({
+      name: 'zap_scan',
+      description: 'Run the real pinned OWASP ZAP spider and passive DAST scan against the assigned target.',
+      inputSchema: z.object({
+        maxChildren: z.number().int().min(1).max(100).default(20),
+        maxAlerts: z.number().int().min(1).max(500).default(200),
+      }),
+      callback: async ({ maxChildren, maxAlerts }) => {
+        const result = await executeExternalEngine(
+          'zap',
+          { id: `${brief.workerId}-zap`, description: brief.objective },
+          { zap: { target: targetUrl.toString(), maxChildren, maxAlerts, recurse: true } },
+        );
+        return safeText(JSON.stringify({ status: result.status, observations: result.observations }), 8_000);
       },
     }));
   }
