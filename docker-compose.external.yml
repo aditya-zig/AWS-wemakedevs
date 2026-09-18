@@ -4,8 +4,8 @@ services:
       context: .
       dockerfile: services/toxiproxy/Dockerfile
     ports:
-      - "8474:8474"
-      - "8666:8666"
+      - "127.0.0.1:8474:8474"
+      - "127.0.0.1:8666:8666"
     read_only: true
     tmpfs:
       - /tmp:size=64m
@@ -21,7 +21,7 @@ services:
       context: .
       dockerfile: services/zap/Dockerfile
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     mem_limit: 1536m
     cpus: 1.5
     pids_limit: 384
@@ -46,7 +46,7 @@ services:
       STRIX_LLM: "${STRIX_LLM:-}"
       LLM_API_KEY: "${LLM_API_KEY:-}"
     ports:
-      - "8789:8789"
+      - "127.0.0.1:8789:8789"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     extra_hosts:
@@ -69,7 +69,7 @@ services:
       VERIFIAI_BROWSER_USE_MODEL_BASE_URL: "${VERIFIAI_BROWSER_USE_MODEL_BASE_URL:-https://openrouter.ai/api/v1}"
       VERIFIAI_BROWSER_USE_MODEL_API_KEY: "${VERIFIAI_BROWSER_USE_MODEL_API_KEY:-}"
     ports:
-      - "8792:8792"
+      - "127.0.0.1:8792:8792"
     shm_size: 1gb
     mem_limit: 2g
     cpus: 2.0
@@ -91,7 +91,7 @@ services:
       VERIFIAI_CUA_MODEL_API_BASE: "${VERIFIAI_CUA_MODEL_API_BASE:-}"
       CUA_API_KEY: "${CUA_API_KEY:-}"
     ports:
-      - "8791:8791"
+      - "127.0.0.1:8791:8791"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - cua-artifacts:/artifacts
@@ -119,7 +119,7 @@ services:
       ZEP_API_KEY: "${ZEP_API_KEY:-}"
       OASIS_DEFAULT_MAX_ROUNDS: "${MIROFISH_MAX_ROUNDS:-10}"
     ports:
-      - "5001:5001"
+      - "127.0.0.1:5001:5001"
     volumes:
       - mirofish-data:/src/MiroFish/backend/uploads
     mem_limit: 3g
