@@ -1,0 +1,104 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: VERIFIAI AgentCore worker runtime for the Strands worker contract
+
+Parameters:
+  AgentRuntimeName:
+    Type: String
+    Default: verifiaiWorker
+    AllowedPattern: '^[A-Za-z][A-Za-z0-9_]{0,47}$'
+  WorkerImageUri:
+    Type: String
+    Description: ARM64 ECR image URI built from infra/aws/agentcore-worker.Dockerfile
+  WorkerRepositoryArn:
+    Type: String
+    Description: ARN of the ECR repository containing WorkerImageUri
+  ModelSecretArn:
+    Type: String
+    Description: Secrets Manager ARN containing the selected external model provider API key
+  ModelSecretField:
+    Type: String
+    Default: ''
+  WorkerSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+  WorkerSecurityGroupIds:
+    Type: List<AWS::EC2::SecurityGroup::Id>
+
+Resources:
+  RuntimeExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AgentCoreAssumeRole
+            Effect: Allow
+            Principal:
+              Service: bedrock-agentcore.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:*
+      Policies:
+        - PolicyName: verifiai-agentcore-worker
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: EcrAuth
+                Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: '*'
+              - Sid: WorkerImageRead
+                Effect: Allow
+                Action:
+                  - ecr:BatchGetImage
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchCheckLayerAvailability
+                Resource: !Ref WorkerRepositoryArn
+              - Sid: ModelSecretRead
+                Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref ModelSecretArn
+              - Sid: RuntimeLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:DescribeLogStreams
+                  - logs:PutLogEvents
+                Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock-agentcore/runtimes/*
+
+  WorkerRuntime:
+    Type: AWS::BedrockAgentCore::Runtime
+    Properties:
+      AgentRuntimeName: !Ref AgentRuntimeName
+      Description: VERIFIAI isolated Strands worker runtime
+      AgentRuntimeArtifact:
+        ContainerConfiguration:
+          ContainerUri: !Ref WorkerImageUri
+      RoleArn: !GetAtt RuntimeExecutionRole.Arn
+      ProtocolConfiguration: HTTP
+      EnvironmentVariables:
+        AWS_REGION: !Ref AWS::Region
+        VERIFIAI_MODEL_SECRET_ID: !Ref ModelSecretArn
+        VERIFIAI_MODEL_SECRET_FIELD: !Ref ModelSecretField
+      LifecycleConfiguration:
+        IdleRuntimeSessionTimeout: 300
+        MaxLifetime: 1800
+      NetworkConfiguration:
+        NetworkMode: VPC
+        NetworkModeConfig:
+          Subnets: !Ref WorkerSubnetIds
+          SecurityGroups: !Ref WorkerSecurityGroupIds
+      Tags:
+        verifiai:managed: 'true'
+        verifiai:component: worker
+
+Outputs:
+  AgentRuntimeArn:
+    Value: !GetAtt WorkerRuntime.AgentRuntimeArn
+  AgentRuntimeId:
+    Value: !GetAtt WorkerRuntime.AgentRuntimeId
+  RuntimeExecutionRoleArn:
+    Value: !GetAtt RuntimeExecutionRole.Arn
