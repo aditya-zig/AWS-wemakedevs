@@ -46,7 +46,9 @@ export function createWorkerTools(
   const caps = capabilitySet(brief);
   const allowHosts = new Set(brief.constraints.networkAllowlist.map((value) => value.trim()).filter(Boolean));
   const targetUrl = brief.target?.url ? new URL(brief.target.url) : null;
+  const externalEngineUrl = env.VERIFIAI_EXTERNAL_ENGINE_URL;
   if (targetUrl) allowHosts.add(targetUrl.hostname);
+  if (externalEngineUrl) allowHosts.add(new URL(externalEngineUrl).hostname);
   const policy = new WorkerNetworkPolicy([...allowHosts]);
   let toolCalls = 0;
 
@@ -61,6 +63,42 @@ export function createWorkerTools(
       at: new Date().toISOString(),
       evidence: item,
     });
+  };
+
+  const executeExternalEngine = async (
+    engine: 'strix' | 'schemathesis' | 'locust' | 'k6' | 'toxiproxy',
+    experiment: Record<string, unknown>,
+    environment: Record<string, unknown> = {},
+  ) => {
+    if (!externalEngineUrl) throw new Error('VERIFIAI_EXTERNAL_ENGINE_URL is not configured');
+    policy.assertUrl(externalEngineUrl);
+    const response = await fetch(new URL('/execute', externalEngineUrl), {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(env.VERIFIAI_EXTERNAL_ENGINE_TOKEN ? { authorization: `Bearer ${env.VERIFIAI_EXTERNAL_ENGINE_TOKEN}` } : {}),
+      },
+      body: JSON.stringify({
+        engine,
+        experiment,
+        context: {
+          target: targetUrl ? { baseUrl: targetUrl.toString(), repository: brief.repository.fullName } : { repository: brief.repository.fullName },
+          environment,
+        },
+      }),
+      signal: AbortSignal.timeout(Math.min(brief.constraints.timeoutMs, 175_000)),
+    });
+    const result: any = await response.json();
+    if (!response.ok) throw new Error(`external engine service HTTP ${response.status}: ${safeText(JSON.stringify(result), 2_000)}`);
+    for (const item of Array.isArray(result?.evidence) ? result.evidence : []) {
+      await record({
+        kind: item?.kind ?? 'runtime',
+        source: item?.source ?? engine,
+        executed: item?.executed === true,
+        payload: item?.payload ?? {},
+      });
+    }
+    return result;
   };
 
   if (hasAny(caps, ['repository', 'repo', 'source', 'security'])) {
@@ -193,6 +231,98 @@ export function createWorkerTools(
         },
       }));
     }
+  }
+
+  if (externalEngineUrl && targetUrl && hasAny(caps, ['security', 'strix'])) {
+    tools.push(tool({
+      name: 'strix_scan',
+      description: 'Run the real pinned Strix security scanner against the assigned target. Returns only executed Strix evidence.',
+      inputSchema: z.object({
+        scanMode: z.enum(['quick', 'standard', 'deep']).default('quick'),
+        maxBudgetUsd: z.number().min(0.1).max(2.5).default(0.5),
+        instruction: z.string().max(2_000).optional(),
+      }),
+      callback: async ({ scanMode, maxBudgetUsd, instruction }) => {
+        const budget = Math.min(maxBudgetUsd, brief.constraints.maxEstimatedSpendUsd ?? maxBudgetUsd);
+        const result = await executeExternalEngine(
+          'strix',
+          { id: `${brief.workerId}-strix`, description: instruction ?? brief.objective },
+          { strix: { target: targetUrl.toString(), scanMode, maxBudgetUsd: budget } },
+        );
+        return safeText(JSON.stringify({ status: result.status, observations: result.observations, health: result.health }), 8_000);
+      },
+    }));
+  }
+
+  if (externalEngineUrl && targetUrl && hasAny(caps, ['schemathesis', 'api-fuzz', 'api'])) {
+    tools.push(tool({
+      name: 'schemathesis_fuzz',
+      description: 'Run real pinned Schemathesis property/fuzz testing against the target OpenAPI or GraphQL schema.',
+      inputSchema: z.object({
+        schemaPath: z.string().min(1).max(500).default('/openapi.json'),
+        maxExamples: z.number().int().min(1).max(100).default(25),
+      }),
+      callback: async ({ schemaPath, maxExamples }) => {
+        const schemaUrl = new URL(schemaPath, targetUrl);
+        if (schemaUrl.origin !== targetUrl.origin) throw new Error('schemaPath cannot leave the assigned target origin');
+        const result = await executeExternalEngine(
+          'schemathesis',
+          { id: `${brief.workerId}-schemathesis`, description: brief.objective },
+          { schemathesis: { schemaUrl: schemaUrl.toString(), maxExamples } },
+        );
+        return safeText(JSON.stringify({ status: result.status, observations: result.observations }), 8_000);
+      },
+    }));
+  }
+
+  if (externalEngineUrl && targetUrl && hasAny(caps, ['performance', 'latency', 'load', 'locust', 'k6'])) {
+    tools.push(tool({
+      name: 'load_test',
+      description: 'Run a bounded real Locust or k6 load test against the assigned target. This is the real upstream engine, not the lightweight HTTP probe.',
+      inputSchema: z.object({
+        engine: z.enum(['locust', 'k6']).default('locust'),
+        path: z.string().min(1).max(500).default('/'),
+        concurrency: z.number().int().min(1).max(25).default(2),
+        durationSec: z.number().int().min(1).max(60).default(10),
+        maxP95Ms: z.number().min(1).max(60_000).default(1_000),
+        maxErrorRate: z.number().min(0).max(1).default(0.01),
+      }),
+      callback: async ({ engine, path, concurrency, durationSec, maxP95Ms, maxErrorRate }) => {
+        const probeUrl = new URL(path, targetUrl);
+        if (probeUrl.origin !== targetUrl.origin) throw new Error('load-test path cannot leave the assigned target origin');
+        const result = await executeExternalEngine(
+          engine,
+          { id: `${brief.workerId}-${engine}`, description: brief.objective },
+          { performance: { path: probeUrl.pathname + probeUrl.search, concurrency, durationSec, maxP95Ms, maxErrorRate } },
+        );
+        return safeText(JSON.stringify({ status: result.status, observations: result.observations }), 8_000);
+      },
+    }));
+  }
+
+  if (externalEngineUrl && hasAny(caps, ['chaos', 'toxiproxy', 'fault'])) {
+    tools.push(tool({
+      name: 'toxiproxy_fault',
+      description: 'Create a real Toxiproxy proxy/toxic for an authorized sandbox dependency and optionally probe the observed failure.',
+      inputSchema: z.object({
+        name: z.string().min(1).max(80),
+        listen: z.string().min(3).max(200),
+        upstream: z.string().min(3).max(200),
+        toxicType: z.enum(['latency', 'timeout', 'reset_peer', 'bandwidth']).default('latency'),
+        latencyMs: z.number().int().min(1).max(30_000).default(1_000),
+        probeUrl: z.string().url().optional(),
+        probeTimeoutMs: z.number().int().min(100).max(30_000).default(5_000),
+      }),
+      callback: async ({ name, listen, upstream, toxicType, latencyMs, probeUrl, probeTimeoutMs }) => {
+        const attributes = toxicType === 'latency' ? { latency: latencyMs, jitter: 0 } : toxicType === 'timeout' ? { timeout: latencyMs } : {};
+        const result = await executeExternalEngine(
+          'toxiproxy',
+          { id: `${brief.workerId}-toxiproxy`, description: brief.objective },
+          { toxiproxy: { name, listen, upstream, toxic: { name: toxicType, type: toxicType, stream: 'downstream', toxicity: 1, attributes }, probeUrl, probeTimeoutMs } },
+        );
+        return safeText(JSON.stringify({ status: result.status, observations: result.observations }), 8_000);
+      },
+    }));
   }
 
   if (brief.target?.environment === 'isolated-mutation' && brief.constraints.destructiveAllowed && hasAny(caps, ['mutation', 'repair', 'edit', 'patch'])) {
