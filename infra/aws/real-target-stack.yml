@@ -98,6 +98,88 @@ Resources:
       ToPort: 65535
       DestinationSecurityGroupId: !Ref TargetSecurityGroup
 
+  ProofRecordingBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-browser-recordings
+            Status: Enabled
+            ExpirationInDays: 7
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 3
+
+  ProofBrowserRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AgentCoreBrowserAssumeRole
+            Effect: Allow
+            Principal:
+              Service: bedrock-agentcore.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:*
+      Policies:
+        - PolicyName: browser-recording
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: RecordingBucket
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:ListBucket
+                  - s3:ListMultipartUploadParts
+                  - s3:AbortMultipartUpload
+                Resource:
+                  - !GetAtt ProofRecordingBucket.Arn
+                  - !Sub ${ProofRecordingBucket.Arn}/browser-recordings/*
+              - Sid: BrowserLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogStreams
+                Resource: '*'
+
+  ProofBrowser:
+    Type: AWS::BedrockAgentCore::BrowserCustom
+    Properties:
+      Name: !Sub verifiaiProof${AWS::AccountId}
+      Description: VERIFIAI private browser with real S3 session recording for proof-of-fix
+      ExecutionRoleArn: !GetAtt ProofBrowserRole.Arn
+      NetworkConfiguration:
+        NetworkMode: VPC
+        VpcConfig:
+          SecurityGroups:
+            - !Ref AuditorSecurityGroup
+          Subnets: !Ref TargetSubnetIds
+      RecordingConfig:
+        Enabled: true
+        S3Location:
+          Bucket: !Ref ProofRecordingBucket
+          Prefix: browser-recordings
+      Tags:
+        verifiai:managed: 'true'
+        verifiai:component: proof-browser
+
   TargetExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -268,3 +350,11 @@ Outputs:
     Value: !Ref TargetSecurityGroup
   HealthProbeFunctionName:
     Value: !Ref PrivateHealthProbe
+  ProofBrowserId:
+    Value: !GetAtt ProofBrowser.BrowserId
+  ProofBrowserArn:
+    Value: !GetAtt ProofBrowser.BrowserArn
+  ProofRecordingBucket:
+    Value: !Ref ProofRecordingBucket
+  ProofRecordingPrefix:
+    Value: browser-recordings
