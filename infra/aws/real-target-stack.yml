@@ -9,9 +9,6 @@ Parameters:
     Default: 10.0.0.0/16
   TargetSubnetIds:
     Type: List<AWS::EC2::Subnet::Id>
-  AuditorSecurityGroupId:
-    Type: AWS::EC2::SecurityGroup::Id
-    Description: Security group attached to AgentCore workers/control-plane health probe
   BootstrapImageUri:
     Type: String
     Default: public.ecr.aws/nginx/nginx:stable-alpine
@@ -39,16 +36,33 @@ Resources:
     Properties:
       RetentionInDays: 3
 
+  AuditorSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: VERIFIAI AgentCore workers and private health probes
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS to approved model/GitHub hosts; application allowlist is enforced by workers
+        - IpProtocol: udp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: !Ref VpcCidr
+          Description: VPC DNS
+        - IpProtocol: tcp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: !Ref VpcCidr
+          Description: VPC DNS fallback
+
   TargetSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Private VERIFIAI audit targets
       VpcId: !Ref VpcId
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 1
-          ToPort: 65535
-          SourceSecurityGroupId: !Ref AuditorSecurityGroupId
       SecurityGroupEgress:
         - IpProtocol: tcp
           FromPort: 443
@@ -65,6 +79,24 @@ Resources:
           ToPort: 53
           CidrIp: !Ref VpcCidr
           Description: VPC DNS fallback
+
+  TargetIngressFromAuditor:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref TargetSecurityGroup
+      IpProtocol: tcp
+      FromPort: 1
+      ToPort: 65535
+      SourceSecurityGroupId: !Ref AuditorSecurityGroup
+
+  AuditorEgressToTarget:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref AuditorSecurityGroup
+      IpProtocol: tcp
+      FromPort: 1
+      ToPort: 65535
+      DestinationSecurityGroupId: !Ref TargetSecurityGroup
 
   TargetExecutionRole:
     Type: AWS::IAM::Role
@@ -193,7 +225,7 @@ Resources:
       MemorySize: 128
       VpcConfig:
         SecurityGroupIds:
-          - !Ref AuditorSecurityGroupId
+          - !Ref AuditorSecurityGroup
         SubnetIds: !Ref TargetSubnetIds
       Code:
         ZipFile: |
@@ -230,6 +262,8 @@ Outputs:
     Value: !Ref BaseTargetTask
   TargetContainerName:
     Value: target
+  AuditorSecurityGroupId:
+    Value: !Ref AuditorSecurityGroup
   TargetSecurityGroupId:
     Value: !Ref TargetSecurityGroup
   HealthProbeFunctionName:
