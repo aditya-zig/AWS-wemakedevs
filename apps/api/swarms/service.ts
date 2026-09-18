@@ -73,6 +73,7 @@ export class LiveAuditService {
       modelProfileId,
       target: input.target,
       computerUseUrl: this.env.VERIFIAI_COMPUTER_USE_URL,
+      externalEngineUrl: this.env.VERIFIAI_EXTERNAL_ENGINE_URL,
     });
 
     const launcher = mode === 'local'
