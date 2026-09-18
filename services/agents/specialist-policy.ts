@@ -19,6 +19,8 @@ export function buildSpecialistPolicy(input: {
   modelProfileId: string;
   target: AuditTargetRef | null;
   computerUseUrl?: string;
+  browserUseUrl?: string;
+  cuaUrl?: string;
   externalEngineUrl?: string;
 }): SpecialistPolicy {
   const provider = input.modelProfileId.split(':', 1)[0] as ModelProviderName;
@@ -32,6 +34,8 @@ export function buildSpecialistPolicy(input: {
   ]);
   if (input.target?.url) networkAllowlist.add(host(input.target.url));
   if (input.computerUseUrl) networkAllowlist.add(host(input.computerUseUrl));
+  if (input.browserUseUrl) networkAllowlist.add(host(input.browserUseUrl));
+  if (input.cuaUrl) networkAllowlist.add(host(input.cuaUrl));
   if (input.externalEngineUrl) networkAllowlist.add(host(input.externalEngineUrl));
 
   const approvedTools: SpecialistPolicy['approvedTools'] = {
@@ -76,7 +80,7 @@ export function buildSpecialistPolicy(input: {
   if (input.target?.url) {
     approvedTools['browser-app-user'] = [{
       name: 'browser',
-      capabilities: ['browser-interact', 'computer-use'],
+      capabilities: ['browser-interact', 'computer-use', 'browser-use', 'cua'],
       executionClass: 'agent-native',
     }];
   } else {
@@ -86,8 +90,8 @@ export function buildSpecialistPolicy(input: {
     inapplicable['api-chaos'] = 'No runnable target URL is available.';
     inapplicable['performance-discovery'] = 'No runnable target URL is available.';
   }
-  if (!input.computerUseUrl && input.target?.url) {
-    inapplicable['browser-app-user'] = 'Computer-use service is not configured for real app interaction.';
+  if (!input.computerUseUrl && !input.browserUseUrl && !input.cuaUrl && input.target?.url) {
+    inapplicable['browser-app-user'] = 'Browser Use/Cua computer-use service is not configured for real app interaction.';
   }
 
   return { approvedTools, networkAllowlist: [...networkAllowlist], inapplicable };
