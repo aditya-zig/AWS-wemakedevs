@@ -1,4 +1,4 @@
-import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createInterface } from 'node:readline';
 import {
@@ -22,7 +22,7 @@ export interface DockerWorkerLauncherOptions {
   network?: string;
   dockerBinary?: string;
   now?: () => string;
-  env?: NodeJS.ProcessEnv;
+  env?: Record<string, string | undefined>;
 }
 
 export interface DockerRunSpec {
@@ -120,8 +120,8 @@ function parseEnvelope(line: string): { type: 'worker.event'; event: AgentWorker
 export class DockerWorkerLauncher implements AgentWorkerLauncher {
   private readonly now: () => string;
   private readonly dockerBinary: string;
-  private readonly env: NodeJS.ProcessEnv;
-  private readonly processes = new Map<string, ChildProcessWithoutNullStreams>();
+  private readonly env: Record<string, string | undefined>;
+  private readonly processes = new Map<string, any>();
 
   constructor(private readonly options: DockerWorkerLauncherOptions = {}) {
     this.now = options.now ?? (() => new Date().toISOString());
@@ -193,7 +193,7 @@ export class DockerWorkerLauncher implements AgentWorkerLauncher {
 
       const exited = new Promise<number>((resolve, reject) => {
         child.once('error', reject);
-        child.once('close', (code) => resolve(code ?? 1));
+        child.once('close', (code: number | null) => resolve(code ?? 1));
       });
 
       child.stdin.end(JSON.stringify({ type: 'verifiai.worker.launch', brief }));
