@@ -19,6 +19,8 @@
     "typescript": "^5.8.3"
   },
   "dependencies": {
-    "@aws-sdk/client-secrets-manager": "^3.0.0"
+    "@aws-sdk/client-secrets-manager": "^3.0.0",
+    "@strands-agents/sdk": "1.18.0",
+    "openai": "^7.17.0"
   }
 }
