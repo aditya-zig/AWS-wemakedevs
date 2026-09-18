@@ -70,7 +70,7 @@ export function createToxiproxyAdapter({ apiUrl = process.env.TOXIPROXY_URL ?? '
           probe = { status: 0, durationMs: Date.now() - started, ok: false, error: error.message };
         }
       }
-      const status = add.response.ok ? (probe ? (probe.ok ? 'pass' : 'fail') : 'pass') : 'unknown';
+      const status = !add.response.ok ? 'unknown' : probe ? (probe.ok ? 'pass' : 'fail') : 'unknown';
       const evidence = {
         kind: 'network',
         source: 'toxiproxy',
@@ -83,7 +83,9 @@ export function createToxiproxyAdapter({ apiUrl = process.env.TOXIPROXY_URL ?? '
       captured.push(evidence);
       return {
         status,
-        observations: [probe ? `Real Toxiproxy fault injected; probe ${probe.ok ? 'reached target' : 'failed/timeout'}` : 'Real Toxiproxy toxic created'],
+        observations: [probe
+          ? `Real Toxiproxy fault injected; probe ${probe.ok ? 'reached target' : 'failed/timeout'}`
+          : 'Real Toxiproxy toxic created, but no observed target probe was supplied; outcome remains unknown'],
         evidence: [evidence],
       };
     },
