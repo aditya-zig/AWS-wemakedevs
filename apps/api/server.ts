@@ -160,8 +160,17 @@ export function createApiServer(deps: ApiDependencies): Server {
         if (
           !repository ||
           repository.provider !== 'github' ||
-          ![repository.fullName, repository.url, repository.branch, repository.commitSha].every((value) => typeof value === 'string' && value)
-        ) return respond(response, 400, { error: 'repository must include provider=github, fullName, url, branch and commitSha' });
+          ![repository.fullName, repository.url, repository.branch].every((value) => typeof value === 'string' && value)
+        ) return respond(response, 400, { error: 'repository must include provider=github, fullName, url and branch' });
+        if (typeof repository.commitSha !== 'string' || !repository.commitSha) {
+          const commitResponse = await fetch(`https://api.github.com/repos/${repository.fullName}/commits/${encodeURIComponent(repository.branch)}`, {
+            headers: { accept: 'application/vnd.github+json', 'user-agent': 'verifiai-api' },
+          });
+          if (!commitResponse.ok) return respond(response, 400, { error: `Could not resolve repository commit: GitHub HTTP ${commitResponse.status}` });
+          const commit: any = await commitResponse.json();
+          if (typeof commit?.sha !== 'string' || !commit.sha) return respond(response, 400, { error: 'GitHub did not return a commit SHA' });
+          repository.commitSha = commit.sha;
+        }
         const target = body?.target ?? null;
         if (target !== null && (typeof target?.id !== 'string' || (target.url !== undefined && typeof target.url !== 'string'))) {
           return respond(response, 400, { error: 'target must be null or include id and optional url' });
