@@ -42,6 +42,7 @@ async function main() {
     'VERIFIAI_TARGET_CONTAINER_NAME',
     'VERIFIAI_TARGET_SUBNET_IDS',
     'VERIFIAI_TARGET_SECURITY_GROUP_IDS',
+    'VERIFIAI_HEALTH_PROBE_FUNCTION',
     'VERIFIAI_AGENTCORE_RUNTIME_ARN',
     'VERIFIAI_MODEL_PROVIDER',
     'VERIFIAI_MODEL_ID',
@@ -64,6 +65,7 @@ async function main() {
     buildTimeoutMs: Number(process.env.VERIFIAI_BUILD_TIMEOUT_MS || 15 * 60_000),
     launchTimeoutMs: Number(process.env.VERIFIAI_LAUNCH_TIMEOUT_MS || 5 * 60_000),
     healthTimeoutMs: Number(process.env.VERIFIAI_HEALTH_TIMEOUT_MS || 90_000),
+    healthProbeFunctionName: required('VERIFIAI_HEALTH_PROBE_FUNCTION'),
   });
 
   let target;
