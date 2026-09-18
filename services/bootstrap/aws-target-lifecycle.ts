@@ -8,6 +8,10 @@ import {
   ECRClient,
 } from '@aws-sdk/client-ecr';
 import {
+  InvokeCommand,
+  LambdaClient,
+} from '@aws-sdk/client-lambda';
+import {
   DeregisterTaskDefinitionCommand,
   DescribeTaskDefinitionCommand,
   DescribeTasksCommand,
@@ -36,6 +40,7 @@ export interface AwsTargetLifecycleConfig {
   buildTimeoutMs?: number;
   launchTimeoutMs?: number;
   healthTimeoutMs?: number;
+  healthProbeFunctionName?: string;
 }
 
 export interface AwsTargetRequest {
@@ -73,6 +78,7 @@ export interface AwsTargetLifecycleOptions {
   codebuild?: AwsLikeClient;
   ecr?: AwsLikeClient;
   ecs?: AwsLikeClient;
+  lambda?: AwsLikeClient;
   fetchFn?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
   now?: () => string;
@@ -121,6 +127,7 @@ export class AwsTargetLifecycle {
   private readonly codebuild: AwsLikeClient;
   private readonly ecr: AwsLikeClient;
   private readonly ecs: AwsLikeClient;
+  private readonly lambda: AwsLikeClient;
   private readonly fetchFn: typeof fetch;
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly now: () => string;
@@ -129,6 +136,7 @@ export class AwsTargetLifecycle {
     this.codebuild = options.codebuild ?? new CodeBuildClient({ region: config.region });
     this.ecr = options.ecr ?? new ECRClient({ region: config.region });
     this.ecs = options.ecs ?? new ECSClient({ region: config.region });
+    this.lambda = options.lambda ?? new LambdaClient({ region: config.region });
     this.fetchFn = options.fetchFn ?? fetch;
     this.sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
     this.now = options.now ?? (() => new Date().toISOString());
@@ -258,9 +266,9 @@ export class AwsTargetLifecycle {
       let lastHealth = 'not attempted';
       while (Date.now() < healthDeadline) {
         try {
-          const response = await this.fetchFn(healthUrl, { signal: AbortSignal.timeout(5_000) });
-          lastHealth = `HTTP ${response.status}`;
-          if (response.ok) {
+          const healthy = await this.probeHealth(healthUrl);
+          lastHealth = healthy.message;
+          if (healthy.ok) {
             return {
               buildId,
               imageUri,
@@ -283,6 +291,26 @@ export class AwsTargetLifecycle {
       try { await this.deregisterTaskDefinition(taskDefinitionArn); } catch {}
       throw error;
     }
+  }
+
+  private async probeHealth(healthUrl: string): Promise<{ ok: boolean; message: string }> {
+    if (this.config.healthProbeFunctionName) {
+      const output = await this.lambda.send(new InvokeCommand({
+        FunctionName: this.config.healthProbeFunctionName,
+        InvocationType: 'RequestResponse',
+        Payload: new TextEncoder().encode(JSON.stringify({ url: healthUrl })),
+      }));
+      if (output?.FunctionError) return { ok: false, message: `Lambda ${output.FunctionError}` };
+      const raw = output?.Payload ? new TextDecoder().decode(output.Payload) : '';
+      const body = raw ? JSON.parse(raw) : {};
+      const status = Number(body?.statusCode ?? 0);
+      return {
+        ok: body?.ok === true && status >= 200 && status < 400,
+        message: `VPC health probe HTTP ${status || 'unknown'}`,
+      };
+    }
+    const response = await this.fetchFn(healthUrl, { signal: AbortSignal.timeout(5_000) });
+    return { ok: response.ok, message: `HTTP ${response.status}` };
   }
 
   async stop(handle: Pick<AwsTargetHandle, 'taskArn' | 'taskDefinitionArn'>): Promise<void> {
