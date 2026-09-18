@@ -41,7 +41,7 @@ export function buildSpecialistPolicy(input: {
   const approvedTools: SpecialistPolicy['approvedTools'] = {
     'security-secrets': [{
       name: 'repository',
-      capabilities: ['repository-read', 'source-inspection', 'security-analysis', 'strix'],
+      capabilities: ['repository-read', 'source-inspection', 'security-analysis', 'strix', 'zap', 'dast'],
       executionClass: 'agent-native',
     }],
     'api-chaos': [{
