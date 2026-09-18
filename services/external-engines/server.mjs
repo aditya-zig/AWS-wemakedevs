@@ -3,6 +3,7 @@ import { createStrixAdapter } from '../../packages/adapters/strix/index.mjs';
 import { createSchemathesisAdapter } from '../../packages/adapters/schemathesis/index.mjs';
 import { createPerformanceAdapter } from '../../packages/adapters/performance/index.mjs';
 import { createToxiproxyAdapter } from '../../packages/adapters/toxiproxy/index.mjs';
+import { createZapAdapter } from '../../packages/adapters/zap/index.mjs';
 
 const MAX_BODY_BYTES = 256 * 1024;
 
@@ -12,6 +13,7 @@ function adapterFor(engine) {
   if (engine === 'locust') return createPerformanceAdapter({ engine: 'locust' });
   if (engine === 'k6') return createPerformanceAdapter({ engine: 'k6' });
   if (engine === 'toxiproxy') return createToxiproxyAdapter();
+  if (engine === 'zap') return createZapAdapter();
   throw new Error(`unsupported external engine: ${engine}`);
 }
 
@@ -78,7 +80,7 @@ export function createExternalEngineServer() {
         return;
       }
       if (req.method === 'GET' && req.url === '/health') {
-        const engines = ['strix', 'schemathesis', 'locust', 'k6', 'toxiproxy'];
+        const engines = ['strix', 'zap', 'schemathesis', 'locust', 'k6', 'toxiproxy'];
         const checks = {};
         for (const engine of engines) {
           try { checks[engine] = await adapterFor(engine).healthcheck(); }
