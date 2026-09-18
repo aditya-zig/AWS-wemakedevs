@@ -67,6 +67,19 @@ export interface AuditRunResult {
   guardrails: AuditGuardrailSnapshot;
 }
 
+export interface LiveSwarmState {
+  instanceId: string;
+  auditId?: string;
+  plan: LivingAuditPlan | null;
+  activeWorkerIds: string[];
+  events: AgentWorkerEvent[];
+  evidence: EvidenceInput[];
+  reports: AgentWorkerReport[];
+  guardrails?: AuditGuardrailSnapshot;
+  stopped: boolean;
+  finished: boolean;
+}
+
 export interface AuditPlannerContext {
   auditId: string;
   repository: AuditRepositoryFacts;
@@ -214,7 +227,12 @@ export class EphemeralStrandsOrchestrator {
   private readonly now: () => string;
   private active = new Map<string, AgentWorkerSession>();
   private stopped = false;
+  private finished = false;
   private latestPlan: LivingAuditPlan | null = null;
+  private liveEvents: AgentWorkerEvent[] = [];
+  private liveEvidence: EvidenceInput[] = [];
+  private liveReports: AgentWorkerReport[] = [];
+  private ledger?: AuditGuardrailLedger;
 
   constructor(
     private readonly planner: AuditPlanningAgent,
@@ -235,6 +253,43 @@ export class EphemeralStrandsOrchestrator {
 
   snapshot(): LivingAuditPlan | null {
     return this.latestPlan ? clonePlan(this.latestPlan) : null;
+  }
+
+  liveState(): LiveSwarmState {
+    return {
+      instanceId: this.instanceId,
+      auditId: this.latestPlan?.auditId,
+      plan: this.snapshot(),
+      activeWorkerIds: [...this.active.keys()],
+      events: [...this.liveEvents],
+      evidence: [...this.liveEvidence],
+      reports: [...this.liveReports],
+      guardrails: this.ledger?.snapshot(),
+      stopped: this.stopped,
+      finished: this.finished,
+    };
+  }
+
+  steer(objective: string, options: { role?: Extract<AgentWorkerRole, 'hypothesis' | 'investigator' | 'judge'>; evidenceRefs?: string[] } = {}): AuditPlanTask {
+    const trimmed = objective.trim();
+    if (!trimmed) throw new Error('Steering objective is required');
+    if (!this.latestPlan) throw new Error('Audit has not started');
+    if (this.finished || this.stopped) throw new Error('Audit is no longer accepting steering');
+    const role = options.role ?? 'investigator';
+    const duplicate = this.latestPlan.tasks.find((task) => task.role === role && task.objective === trimmed && task.state !== 'failed');
+    if (duplicate) return { ...duplicate, evidenceRefs: [...duplicate.evidenceRefs] };
+    const task: AuditPlanTask = {
+      id: `TASK-STEER-${randomUUID().slice(0, 8)}`,
+      role,
+      objective: trimmed,
+      mandatory: false,
+      state: 'queued',
+      attempts: 0,
+      evidenceRefs: [...new Set(options.evidenceRefs ?? [])],
+    };
+    this.latestPlan.tasks.unshift(task);
+    this.touch(this.latestPlan);
+    return { ...task, evidenceRefs: [...task.evidenceRefs] };
   }
 
   async stop(reason = 'orchestrator stopped'): Promise<void> {
@@ -279,10 +334,11 @@ export class EphemeralStrandsOrchestrator {
     const createdAt = this.now();
     const plan: LivingAuditPlan = { auditId, revision: 1, tasks, createdAt, updatedAt: createdAt };
     this.latestPlan = plan;
-    const reports: AgentWorkerReport[] = [];
-    const evidence: EvidenceInput[] = [];
-    const events: AgentWorkerEvent[] = [];
+    const reports = this.liveReports;
+    const evidence = this.liveEvidence;
+    const events = this.liveEvents;
     const ledger = new AuditGuardrailLedger(this.guardrailConfig);
+    this.ledger = ledger;
     const evidenceKeys = new Set<string>();
     const acceptEvidence = (item: EvidenceInput) => {
       const key = JSON.stringify(item);
@@ -447,6 +503,7 @@ export class EphemeralStrandsOrchestrator {
           ? 'completed'
           : 'failed';
 
-    return { auditId, outcome, plan: clonePlan(plan), reports, evidence, events, peakConcurrency, guardrails: ledger.snapshot() };
+    this.finished = true;
+    return { auditId, outcome, plan: clonePlan(plan), reports: [...reports], evidence: [...evidence], events: [...events], peakConcurrency, guardrails: ledger.snapshot() };
   }
 }
