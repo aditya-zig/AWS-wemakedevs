@@ -1,6 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { summarizeExperimentStatuses, type Evidence, type EvidenceInput, type Experiment, type ExperimentStatus, type RunEvent, type ToolName, type VerificationRun, type VerificationTool } from '../../contracts/src/index.js';
 
+/**
+ * Legacy deterministic experiment runner.
+ *
+ * It remains intentionally available as replayable regression/evidence
+ * infrastructure. It is not the VERIFIAI multi-agent orchestrator and must not
+ * be surfaced as an autonomous agent.
+ */
+export const DETERMINISTIC_RUNNER_EXECUTION_CLASS = 'deterministic-tool' as const;
+
 export interface ToolExecutionResult {
   status: Extract<ExperimentStatus, 'pass' | 'fail' | 'unknown'>;
   observations?: string[];
@@ -9,11 +18,11 @@ export interface ToolExecutionResult {
 export type ToolRunner = (experiment: Experiment) => Promise<ToolExecutionResult>;
 export type RunEventListener = (event: RunEvent) => void;
 
-export class VerificationOrchestrator {
+export class DeterministicVerificationRunner {
   #listeners = new Set<RunEventListener>();
   constructor(private readonly runners: Map<ToolName, ToolRunner>) {}
 
-  static fromTools(tools: readonly VerificationTool[]): VerificationOrchestrator {
+  static fromTools(tools: readonly VerificationTool[]): DeterministicVerificationRunner {
     const runners = new Map<ToolName, ToolRunner>();
     for (const tool of tools) {
       runners.set(tool.name as ToolName, async (experiment) => {
@@ -22,7 +31,7 @@ export class VerificationOrchestrator {
         return tool.execute(experiment);
       });
     }
-    return new VerificationOrchestrator(runners);
+    return new DeterministicVerificationRunner(runners);
   }
   onEvent(listener: RunEventListener): () => void { this.#listeners.add(listener); return () => this.#listeners.delete(listener); }
 
@@ -66,7 +75,7 @@ export class VerificationOrchestrator {
         experiment.status = 'unknown';
         const item: Evidence = {
           id: randomUUID(), runId: id, experimentId: experiment.id, requirementId: experiment.requirementId,
-          kind: 'runtime', source: 'orchestrator', capturedAt: new Date().toISOString(), executed: true,
+          kind: 'runtime', source: 'deterministic-runner', capturedAt: new Date().toISOString(), executed: true,
           payload: { outcome: 'unknown', error: String(error?.message || error) },
         };
         evidence.push(item);
@@ -89,3 +98,10 @@ export class VerificationOrchestrator {
     };
   }
 }
+
+/**
+ * Backwards-compatible alias for existing deterministic tests and API slices.
+ * @deprecated Use DeterministicVerificationRunner. The real agent orchestrator
+ * lives under services/orchestrator and launches AgentCore workers.
+ */
+export { DeterministicVerificationRunner as VerificationOrchestrator };

@@ -508,6 +508,7 @@ export class DeepAuditService {
       runId,
       status: 'running',
       mode: 'deep-audit',
+      executionMode: 'legacy-deterministic-tools',
       defaultMode: true,
       repository: input.repository ?? null,
       sandbox: { mode: sandbox.mode, resourceLimits: sandbox.resourceLimits, isolated: true, ephemeral: true },

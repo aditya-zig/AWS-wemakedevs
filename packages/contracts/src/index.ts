@@ -138,3 +138,186 @@ export function summarizeExperimentStatuses(experiments: readonly Experiment[]):
   for (const experiment of experiments) counts[experiment.status] += 1;
   return counts;
 }
+
+/**
+ * Real-agent control-plane contract (architecture freeze 2026-09-18).
+ * Deterministic VerificationTool implementations remain reusable tools/evidence
+ * producers; they are never represented as autonomous workers.
+ */
+export const AGENT_WORKER_CONTRACT_VERSION = 'verifiai.worker.v1' as const;
+export const AGENT_WORKER_LIFECYCLE = [
+  'queued',
+  'launching',
+  'running',
+  'reporting',
+  'tearing_down',
+  'completed',
+] as const;
+
+export type AgentWorkerLifecyclePhase =
+  | typeof AGENT_WORKER_LIFECYCLE[number]
+  | 'incomplete'
+  | 'failed';
+
+export type AgentWorkerRole =
+  | 'security-secrets'
+  | 'browser-app-user'
+  | 'api-chaos'
+  | 'performance-discovery'
+  | 'hypothesis'
+  | 'investigator'
+  | 'judge'
+  | 'repair'
+  | 'reverification';
+
+export type EvidenceFindingState = 'Confirmed' | 'Unconfirmed' | 'Unknown' | 'Incomplete';
+export type ToolExecutionClass = 'agent-native' | 'deterministic-tool';
+
+export interface AuditRepositoryFacts {
+  provider: 'github';
+  fullName: string;
+  url: string;
+  branch: string;
+  commitSha: string;
+}
+
+export interface AuditTargetRef {
+  id: string;
+  url?: string;
+  environment: 'shared-observation' | 'isolated-mutation';
+  immutable?: boolean;
+}
+
+export interface AgentToolGrant {
+  name: string;
+  capabilities: string[];
+  executionClass: ToolExecutionClass;
+  destructive?: boolean;
+}
+
+export interface AgentWorkerConstraints {
+  timeoutMs: number;
+  maxToolCalls: number;
+  maxEvidenceItems: number;
+  destructiveAllowed: boolean;
+  networkAllowlist: string[];
+  maxEstimatedSpendUsd?: number;
+}
+
+export interface AgentWorkerLaunchBrief {
+  contractVersion: typeof AGENT_WORKER_CONTRACT_VERSION;
+  auditId: string;
+  workerId: string;
+  role: AgentWorkerRole;
+  objective: string;
+  repository: AuditRepositoryFacts;
+  target: AuditTargetRef | null;
+  tools: AgentToolGrant[];
+  evidenceRefs: string[];
+  modelProfileId: string;
+  constraints: AgentWorkerConstraints;
+}
+
+export interface AgentWorkerStatusEvent {
+  type: 'worker.status';
+  auditId: string;
+  workerId: string;
+  at: string;
+  phase: AgentWorkerLifecyclePhase;
+  message: string;
+  progress?: number;
+}
+
+export interface AgentWorkerEvidenceEvent {
+  type: 'worker.evidence';
+  auditId: string;
+  workerId: string;
+  at: string;
+  evidence: EvidenceInput;
+}
+
+export interface AgentWorkerFollowUpRequest {
+  role: Extract<AgentWorkerRole, 'hypothesis' | 'investigator' | 'judge' | 'reverification'>;
+  objective: string;
+  evidenceRefs: string[];
+  reason: string;
+}
+
+export interface AgentWorkerReport {
+  contractVersion: typeof AGENT_WORKER_CONTRACT_VERSION;
+  auditId: string;
+  workerId: string;
+  role: AgentWorkerRole;
+  outcome: 'completed' | 'incomplete' | 'failed';
+  findingState: EvidenceFindingState;
+  summary: string;
+  findings: string[];
+  evidence: EvidenceInput[];
+  evidenceRefs: string[];
+  followUps: AgentWorkerFollowUpRequest[];
+  error?: string;
+}
+
+export type AgentWorkerEvent = AgentWorkerStatusEvent | AgentWorkerEvidenceEvent;
+export type AgentWorkerEventSink = (event: AgentWorkerEvent) => void | Promise<void>;
+
+export interface AgentWorkerSession {
+  workerId: string;
+  sessionId: string;
+  result: Promise<AgentWorkerReport>;
+  stop(reason?: string): Promise<void>;
+}
+
+export interface AgentWorkerLauncher {
+  launch(brief: AgentWorkerLaunchBrief, onEvent: AgentWorkerEventSink): Promise<AgentWorkerSession>;
+  teardown(session: AgentWorkerSession): Promise<void>;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+function nonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+export function validateAgentWorkerLaunchBrief(value: unknown): string[] {
+  if (!isRecord(value)) return ['brief must be an object'];
+  const errors: string[] = [];
+  if (value.contractVersion !== AGENT_WORKER_CONTRACT_VERSION) errors.push('contractVersion must be verifiai.worker.v1');
+  for (const key of ['auditId', 'workerId', 'objective', 'modelProfileId']) {
+    if (!nonEmptyString(value[key])) errors.push(`${key} is required`);
+  }
+  const roles: readonly string[] = ['security-secrets','browser-app-user','api-chaos','performance-discovery','hypothesis','investigator','judge','repair','reverification'];
+  if (!roles.includes(String(value.role ?? ''))) errors.push('role is invalid');
+
+  const repository = value.repository;
+  if (!isRecord(repository)) {
+    errors.push('repository is required');
+  } else {
+    if (repository.provider !== 'github') errors.push('repository.provider must be github');
+    for (const key of ['fullName', 'url', 'branch', 'commitSha']) {
+      if (!nonEmptyString(repository[key])) errors.push(`repository.${key} is required`);
+    }
+  }
+
+  if (!Array.isArray(value.tools)) errors.push('tools must be an array');
+  if (!Array.isArray(value.evidenceRefs)) errors.push('evidenceRefs must be an array');
+
+  const constraints = value.constraints;
+  if (!isRecord(constraints)) {
+    errors.push('constraints are required');
+  } else {
+    for (const key of ['timeoutMs', 'maxToolCalls', 'maxEvidenceItems']) {
+      const item = constraints[key];
+      if (typeof item !== 'number' || !Number.isFinite(item) || item <= 0) errors.push(`constraints.${key} must be > 0`);
+    }
+    if (typeof constraints.destructiveAllowed !== 'boolean') errors.push('constraints.destructiveAllowed must be boolean');
+    if (!Array.isArray(constraints.networkAllowlist)) errors.push('constraints.networkAllowlist must be an array');
+  }
+  return errors;
+}
+
+export function assertAgentWorkerLaunchBrief(value: unknown): asserts value is AgentWorkerLaunchBrief {
+  const errors = validateAgentWorkerLaunchBrief(value);
+  if (errors.length) throw new Error(`Invalid agent worker launch brief: ${errors.join('; ')}`);
+}

@@ -1,26 +1,43 @@
 # VERIFIAI frozen contracts
 
-Hackathon freeze: 2026-09-17. Shared names in `packages/contracts/src/index.ts` are owned by Aditya. Other lanes should request changes instead of editing this package directly.
+Architecture freeze: 2026-09-18. The newer **Grill with Docs** decisions supersede the 17 Sep deterministic-agent design.
 
-## Core entities
+## Execution boundary
 
-`Project` → imported GitHub repository pinned to `branch` + `commitSha`.
+There are now two explicit execution classes:
 
-`Requirement` → stable ID, source text, executable invariants, experiment types and target tools.
+1. **Real workers** — model-backed Strands agents launched in isolated AgentCore sessions.
+2. **Deterministic tools** — existing adapters/runners used by workers for execution, evidence capture and replayable regression checks.
 
-`Experiment` → one executable verification step with `pending | running | pass | fail | unknown` state. `unknown` is never treated as failure.
+A deterministic runner is never an autonomous agent and must not be presented as one.
 
-`Evidence` → an observation produced by actual execution. `executed=false` or `source=llm` cannot independently verify a requirement.
+## Real worker lifecycle
 
-`Finding` → hypothesis/tested/confirmed/rejected investigation result tied to evidence.
+Every worker uses the same contract from `packages/contracts/src/index.ts`:
 
-`Repair` → branch + patch + before/after evidence-backed verdict.
+```text
+structured launch brief
+→ launch isolated worker
+→ direct approved tool use
+→ stream status + executed evidence
+→ structured report / follow-up request
+→ teardown
+```
 
-`VerificationRun` → complete experiment state, evidence, events and status counts.
+The launch brief pins the repository commit, target environment, role, approved tools, evidence references, model profile and hard limits. Workers do not communicate peer-to-peer. The audit orchestrator owns the living plan and persistent audit state.
 
-## VerificationTool adapter
+Baseline roles are:
 
-Every external engine (Cua, Strix, MiroFish, API/performance, chaos) implements one boundary:
+- security/secrets
+- browser/app-user
+- API/chaos
+- performance/discovery
+
+Dynamic roles are hypothesis, investigator, judge, repair and independent re-verification.
+
+## Deterministic VerificationTool adapter
+
+Existing engines remain useful behind one boundary:
 
 ```ts
 interface VerificationTool {
@@ -39,8 +56,8 @@ interface VerificationTool {
 }
 ```
 
-Tools perform experiments. VERIFIAI owns orchestration, verdicts, evidence linkage and re-verification.
+The old `VerificationOrchestrator` export is retained only as a compatibility alias for `DeterministicVerificationRunner`. New multi-agent code must not build on it.
 
 ## Evidence rule
 
-A PASS from model text alone is not verification. The judge only returns `VERIFIED` when every relevant experiment has `status=pass` plus executed, non-LLM evidence whose payload reports `outcome=pass`. Executed failing evidence yields `FAILED`; everything insufficient remains `UNKNOWN`.
+A model assertion is not verification. PASS/FAIL and Confirmed/Unconfirmed/Unknown/Incomplete states must derive from executed evidence. Repair workers cannot verify their own patches; verification is independent.
