@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { rm } from 'node:fs/promises';
+import { once } from 'node:events';
+import { createDemoServer } from '../scripts/serve-web.mjs';
 import { BudgetGuard, DeepAuditService, KnowledgeIndex, discoverTarget, redactSecrets } from '../services/deep-audit/index.mjs';
 
 test('repo discovery tries supported bootstrap strategies and reports exact missing inputs', async () => {
@@ -117,4 +119,61 @@ test('a tool/runtime limitation is Incomplete without killing the rest of Deep A
   assert.ok(run.engines.some((engine) => engine.name === 'api' && engine.status === 'pass'));
   assert.ok(run.coverage.incomplete >= 2);
   assert.match(run.overall, /limitations/i);
+});
+
+
+test('budget guard hard-stops spend and request overages', () => {
+  const cost = new BudgetGuard({ creditCeilingUsd: 100, reserveUsd: 15, maxRunUsd: 0.1, maxHttpRequests: 2 });
+  assert.throws(() => cost.charge('customer'), /budget guard blocked/i);
+  cost.request(2);
+  assert.throws(() => cost.request(1), /request guard blocked/i);
+});
+
+test('Deep Audit HTTP path supports audit, live steering, and verified PR gate end to end', async () => {
+  const root = '/tmp/verifiai-deep-audit-http';
+  const knowledgeFile = '/tmp/verifiai-deep-audit-http-knowledge.json';
+  await rm(root, { recursive: true, force: true });
+  await rm(knowledgeFile, { force: true });
+  const deepAudit = new DeepAuditService({
+    sandboxRoot: root,
+    knowledgeFile,
+    fetchImpl: async () => { throw new Error('external network disabled in endpoint test'); }
+  });
+  const server = createDemoServer({ deepAudit });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address === 'object');
+    const base = `http://127.0.0.1:${address.port}`;
+    const auditResponse = await fetch(`${base}/api/demo/deep-audit`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ repository: 'acme/checkout', commitSha: 'http-fixture' })
+    });
+    assert.equal(auditResponse.status, 200);
+    const { run } = await auditResponse.json();
+    assert.equal(run.defaultMode, true);
+    assert.equal(run.fix.status, 'verified');
+
+    const steerResponse = await fetch(`${base}/api/demo/deep-audit/${encodeURIComponent(run.runId)}/steer`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ instruction: 'Investigate duplicate-payment recovery deeper' })
+    });
+    assert.equal(steerResponse.status, 200);
+    const { event } = await steerResponse.json();
+    assert.equal(event.type, 'steering.completed');
+
+    const prResponse = await fetch(`${base}/api/demo/deep-audit/${encodeURIComponent(run.runId)}/pr`, { method: 'POST' });
+    assert.equal(prResponse.status, 200);
+    const { pr } = await prResponse.json();
+    assert.equal(pr.ready, true);
+    assert.equal(pr.autoMerge, false);
+    assert.equal(pr.requiresHumanApproval, true);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    await rm(root, { recursive: true, force: true });
+    await rm(knowledgeFile, { force: true });
+  }
 });
