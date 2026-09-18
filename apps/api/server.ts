@@ -32,7 +32,7 @@ const SESSION_COOKIE = 'verifiai_session';
 
 function cookies(request: IncomingMessage): Record<string, string> {
   const raw = request.headers.cookie || '';
-  return Object.fromEntries(raw.split(';').map((part) => part.trim()).filter(Boolean).map((part) => {
+  return Object.fromEntries(raw.split(';').map((part: string) => part.trim()).filter(Boolean).map((part: string) => {
     const index = part.indexOf('=');
     return index < 0 ? [part, ''] : [part.slice(0, index), decodeURIComponent(part.slice(index + 1))];
   }));
