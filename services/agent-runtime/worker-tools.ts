@@ -71,7 +71,7 @@ export function createWorkerTools(
   };
 
   const executeExternalEngine = async (
-    engine: 'strix' | 'zap' | 'schemathesis' | 'locust' | 'k6' | 'toxiproxy',
+    engine: 'strix' | 'zap' | 'schemathesis' | 'locust' | 'k6' | 'toxiproxy' | 'mirofish',
     experiment: Record<string, unknown>,
     environment: Record<string, unknown> = {},
   ) => {
@@ -236,6 +236,46 @@ export function createWorkerTools(
         },
       }));
     }
+  }
+
+  if (externalEngineUrl && targetUrl && hasAny(caps, ['mirofish', 'personas', 'customer-simulation'])) {
+    tools.push(tool({
+      name: 'mirofish_personas',
+      description: 'Run the real pinned MiroFish/OASIS pipeline to generate and simulate user personas from actual product context. Use resulting personas/actions to choose subsequent Cua or Browser Use journeys.',
+      inputSchema: z.object({
+        productContext: z.string().min(20).max(12_000),
+        requirement: z.string().min(10).max(2_000).optional(),
+        maxRounds: z.number().int().min(1).max(8).default(3),
+        platform: z.enum(['parallel', 'twitter', 'reddit']).default('parallel'),
+      }),
+      callback: async ({ productContext, requirement, maxRounds, platform }) => {
+        const result = await executeExternalEngine(
+          'mirofish',
+          { id: `${brief.workerId}-mirofish`, description: requirement ?? brief.objective },
+          {
+            mirofish: {
+              seedText: productContext,
+              requirement: requirement ?? brief.objective,
+              projectName: `VERIFIAI ${brief.repository.fullName}`,
+              additionalContext: `Target: ${targetUrl.toString()}\nCommit: ${brief.repository.commitSha}`,
+              maxRounds,
+              platform,
+              enableGraphMemoryUpdate: false,
+            },
+          },
+        );
+        const evidenceItem = Array.isArray(result?.evidence) ? result.evidence[0] : null;
+        const payload = evidenceItem?.payload ?? {};
+        return safeText(JSON.stringify({
+          status: result.status,
+          simulationId: payload.simulationId,
+          profileCount: payload.profileCount,
+          profiles: Array.isArray(payload.profiles) ? payload.profiles.slice(0, 20) : [],
+          actionCount: payload.actionCount,
+          actions: Array.isArray(payload.actions) ? payload.actions.slice(0, 50) : [],
+        }), 16_000);
+      },
+    }));
   }
 
   if (externalEngineUrl && targetUrl && hasAny(caps, ['security', 'strix'])) {
