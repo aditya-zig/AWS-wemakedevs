@@ -14,10 +14,12 @@ test('public site contains the complete VERIFIAI marketing story', () => {
   assert.match(html, /Your users shouldn't be your first real-world test\./);
 });
 
-test('frontend is wired to the real flagship demo endpoint', () => {
-  assert.match(js, /\/api\/demo\/flagship/);
+test('frontend is wired to the real Deep Audit endpoint and live run state', () => {
+  assert.match(js, /\/api\/demo\/deep-audit/);
+  assert.match(js, /pollLiveRun/);
   assert.match(js, /runFlagshipAudit/);
   assert.match(js, /runResult/);
+  assert.match(js, /fixDiff/);
 });
 
 test('motion system includes scroll, connector, counter, typing, sticky and reduced-motion behavior', () => {
