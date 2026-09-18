@@ -195,6 +195,60 @@ export function createWorkerTools(
     }
   }
 
+  if (brief.target?.environment === 'isolated-mutation' && brief.constraints.destructiveAllowed && hasAny(caps, ['mutation', 'repair', 'edit', 'patch'])) {
+    const mutationServiceUrl = env.VERIFIAI_MUTATION_SERVICE_URL;
+    if (mutationServiceUrl) {
+      tools.push(tool({
+        name: 'apply_candidate_patch',
+        description: 'Apply a candidate code patch only inside the assigned isolated mutation workspace. Returns the real diff and changed files from the mutation service.',
+        inputSchema: z.object({
+          diagnosis: z.string().min(1).max(5_000),
+          desiredBehavior: z.string().min(1).max(5_000),
+        }),
+        callback: async ({ diagnosis, desiredBehavior }) => {
+          policy.assertUrl(mutationServiceUrl);
+          const response = await fetch(mutationServiceUrl, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              ...(env.VERIFIAI_MUTATION_SERVICE_TOKEN ? { authorization: `Bearer ${env.VERIFIAI_MUTATION_SERVICE_TOKEN}` } : {}),
+            },
+            body: JSON.stringify({
+              auditId: brief.auditId,
+              workerId: brief.workerId,
+              repository: brief.repository,
+              target: brief.target,
+              diagnosis,
+              desiredBehavior,
+            }),
+            signal: AbortSignal.timeout(Math.min(120_000, brief.constraints.timeoutMs)),
+          });
+          const result: any = await response.json();
+          const diff = typeof result?.diff === 'string' ? safeText(result.diff, 50_000) : '';
+          const branch = typeof result?.branch === 'string' ? result.branch : '';
+          const changedFiles = Array.isArray(result?.changedFiles) ? result.changedFiles.filter((item: unknown) => typeof item === 'string').slice(0, 100) : [];
+          const item: EvidenceInput = {
+            kind: 'code',
+            source: 'mutation-service',
+            executed: true,
+            payload: {
+              outcome: response.ok && result?.ok !== false && Boolean(diff) ? 'pass' : 'fail',
+              status: response.status,
+              branch,
+              diff,
+              changedFiles,
+              appUrl: typeof result?.appUrl === 'string' ? result.appUrl : undefined,
+              diagnosis,
+              desiredBehavior,
+            },
+          };
+          await record(item);
+          return JSON.stringify(item.payload);
+        },
+      }));
+    }
+  }
+
   if (targetUrl && hasAny(caps, ['browser', 'desktop', 'computer-use', 'computer'])) {
     const computerUseUrl = env.VERIFIAI_COMPUTER_USE_URL;
     if (computerUseUrl) {
