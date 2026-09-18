@@ -13,7 +13,9 @@
     "check": "npm run typecheck && npm test && npm run test:p0 && npm run test:p1 && npm run demo:e2e",
     "start:api": "node dist/apps/api/index.js",
     "start:sandbox": "node services/sandbox/server.mjs",
-    "start:web": "node scripts/serve-web.mjs"
+    "start:web": "node scripts/serve-web.mjs",
+    "agentcore:worker": "node dist/services/agent-runtime/worker-server.js",
+    "verify:agentcore": "npm run build && node scripts/verify-agentcore-worker.mjs"
   },
   "devDependencies": {
     "typescript": "^5.8.3"
@@ -21,6 +23,7 @@
   "dependencies": {
     "@aws-sdk/client-secrets-manager": "^3.0.0",
     "@strands-agents/sdk": "1.18.0",
-    "openai": "^6.45.0"
+    "openai": "^6.45.0",
+    "@aws-sdk/client-bedrock-agentcore": "^3.0.0"
   }
 }
