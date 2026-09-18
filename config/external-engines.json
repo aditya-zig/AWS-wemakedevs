@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "policy": "upstream-first",
+  "sourceRoot": ".external",
+  "engines": [
+    {
+      "id": "mirofish",
+      "repo": "666ghj/MiroFish",
+      "commit": "39d849138ef254f6c737ab4c4705e5545dbe31d4",
+      "license": "AGPL-3.0-only",
+      "boundary": "separate-service",
+      "runtimeStrategy": "run real MiroFish backend/OASIS simulation; never hard-code persona outcomes"
+    },
+    {
+      "id": "strix",
+      "repo": "usestrix/strix",
+      "commit": "976835194d11171989c5f231fbd6eb0a8e4465dd",
+      "license": "Apache-2.0",
+      "boundary": "isolated-security-worker",
+      "runtimeStrategy": "real strix CLI/runtime; first run may pull its Docker sandbox"
+    },
+    {
+      "id": "cua",
+      "repo": "trycua/cua",
+      "commit": "05f29785b508a4441ec3aa06c556a8e8b26c1d71",
+      "license": "MIT",
+      "boundary": "run-scoped-computer-service",
+      "runtimeStrategy": "real cua computer server/agent; avoid optional omni dependency unless separately approved"
+    },
+    {
+      "id": "browser-use",
+      "repo": "browser-use/browser-use",
+      "commit": "d8110c5ff87ccba887aaa726cdb780f2f84bef8d",
+      "license": "MIT",
+      "boundary": "browser-worker-service",
+      "runtimeStrategy": "real browser-use agent/CLI for browser-specialized journeys"
+    },
+    {
+      "id": "zap",
+      "repo": "zaproxy/zaproxy",
+      "commit": "0c440107128299bc48e59950cb09378271a31c9c",
+      "license": "Apache-2.0",
+      "boundary": "security-sidecar",
+      "runtimeStrategy": "official ZAP runtime/image or build from pinned source; real scan reports required"
+    },
+    {
+      "id": "schemathesis",
+      "repo": "schemathesis/schemathesis",
+      "commit": "94e23b5e497e83404aa681f5443ee32de2c3746f",
+      "license": "MIT",
+      "boundary": "api-worker-tool",
+      "runtimeStrategy": "real schemathesis run against discovered OpenAPI/GraphQL schema"
+    },
+    {
+      "id": "locust",
+      "repo": "locustio/locust",
+      "commit": "b9636d95bffc94c3a1bf8bfd500633e63297470f",
+      "license": "MIT",
+      "boundary": "performance-worker-tool",
+      "runtimeStrategy": "real headless Locust run with bounded generated locustfile and exported stats"
+    },
+    {
+      "id": "k6",
+      "repo": "grafana/k6",
+      "commit": "3fcf5388d78cb382f0c0d42ec556a06bfd1b8dee",
+      "license": "AGPL-3.0-only",
+      "boundary": "separate-service",
+      "runtimeStrategy": "real k6 execution for deterministic replay/load scenarios; keep AGPL component separate"
+    },
+    {
+      "id": "toxiproxy",
+      "repo": "Shopify/toxiproxy",
+      "commit": "40f7fd31bee529d824116bd2a11a9e3425e904ec",
+      "license": "MIT",
+      "boundary": "chaos-sidecar",
+      "runtimeStrategy": "real TCP proxy plus HTTP toxic API; target dependency traffic must pass through it"
+    }
+  ]
+}
