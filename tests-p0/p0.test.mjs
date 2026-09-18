@@ -1,11 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { once } from 'node:events';
 import { readFile } from 'node:fs/promises';
 import { SandboxManager } from '../services/sandbox/runtime.mjs';
 import { AdapterRuntime } from '../services/integrations/runtime.mjs';
 import { createCuaAdapter } from '../packages/adapters/cua/index.mjs';
 import { createStrixAdapter } from '../packages/adapters/strix/index.mjs';
 import { runFlagshipVerification } from '../services/integrations/flagship.mjs';
+import { createDemoServer } from '../scripts/serve-web.mjs';
 
 test('sandbox creates clean isolated runs and cleanup removes them', async () => {
   const manager = new SandboxManager({ root: '/tmp/verifiai-p0-sandbox-test' });
@@ -50,8 +52,30 @@ test('web demo exposes the complete flagship journey with no dead primary CTA', 
   const js = await readFile(new URL('../apps/web/app.js', import.meta.url), 'utf8');
   for (const label of ['Connect GitHub', 'Verification Lab', 'Failure Evidence', 'Approve & Verify', 'Fix Verified']) assert.match(`${html}\n${js}`, new RegExp(label.replace(/[&]/g, '&amp;|&'), 'i'));
   assert.match(js, /nextStep/);
+  assert.match(js, /\/api\/demo\/flagship/);
+  assert.match(js, /runResult/);
   assert.match(js, /FAILED/);
   assert.match(js, /VERIFIED/);
+});
+
+test('demo web endpoint executes the flagship verification used by the UI', async () => {
+  const server = createDemoServer();
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address === 'object');
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/demo/flagship`, { method: 'POST' });
+    assert.equal(response.status, 200);
+    const payload = await response.json();
+    assert.equal(payload.run.before.verdict, 'FAILED');
+    assert.equal(payload.run.after.verdict, 'VERIFIED');
+    assert.equal(payload.run.regressions, 0);
+    assert.equal(payload.run.chaosRestored, true);
+    assert.ok(payload.run.evidence.length >= 5);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
 });
 
 test('target runtime redacts secrets and returns structured healthy startup evidence', async () => {
