@@ -20,6 +20,19 @@ Aditya-owned core implemented here:
 - HTTP endpoints for setup, planning and verification runs
 - executable flagship fixture: payment-provider latency → failure → root cause → repair → verified
 
+## Deep Audit default
+
+The hackathon demo now starts in **Deep Audit** by default. One run coordinates security, leakage, API, browser-use, computer-use, customer simulation, chaos and performance checks, then optionally tests a deployed URL and installable app.
+
+It includes per-engine retries and failure isolation; Confirmed / Unconfirmed / Unknown / Incomplete verdicts; live run state; ephemeral credential redaction; hard request, duration and estimated-cost caps under the $100 credit ceiling; commit-pinned verified knowledge; and a gated reproduce → sandbox patch → regression → proof → PR-ready flow with no auto-merge.
+
+Demo API:
+
+- POST /api/demo/deep-audit
+- GET /api/demo/deep-audit/:runId
+- POST /api/demo/deep-audit/:runId/steer
+- POST /api/demo/deep-audit/:runId/pr
+
 ## Run locally
 
 Requires Node.js 22+ and TypeScript 5.8+.
