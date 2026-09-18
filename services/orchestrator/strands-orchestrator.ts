@@ -16,8 +16,14 @@ import {
   type EvidenceInput,
 } from '../../packages/contracts/src/index.js';
 import { resolveModelRunSelection, type ModelRunSelectionInput } from '../agent-runtime/providers.js';
+import {
+  AuditGuardrailLedger,
+  normalizeGuardrails,
+  type AuditGuardrailConfig,
+  type AuditGuardrailSnapshot,
+} from './guardrails.js';
 
-export type AuditTaskState = 'queued' | 'launching' | 'running' | 'retrying' | 'completed' | 'incomplete' | 'failed';
+export type AuditTaskState = 'queued' | 'launching' | 'running' | 'retrying' | 'completed' | 'skipped' | 'incomplete' | 'failed';
 
 export interface AuditPlanTask {
   id: string;
@@ -29,6 +35,7 @@ export interface AuditPlanTask {
   evidenceRefs: string[];
   report?: AgentWorkerReport;
   lastError?: string;
+  skipReason?: string;
 }
 
 export interface LivingAuditPlan {
@@ -45,6 +52,7 @@ export interface AuditRunInput {
   target: AuditTargetRef | null;
   modelProfileId: string;
   approvedTools: Partial<Record<AgentWorkerRole, AgentToolGrant[]>>;
+  inapplicable?: Partial<Record<AgentWorkerRole, string>>;
   objective?: string;
 }
 
@@ -56,6 +64,7 @@ export interface AuditRunResult {
   evidence: EvidenceInput[];
   events: AgentWorkerEvent[];
   peakConcurrency: number;
+  guardrails: AuditGuardrailSnapshot;
 }
 
 export interface AuditPlannerContext {
@@ -190,6 +199,8 @@ export interface EphemeralAuditOrchestratorOptions {
   maxConcurrency?: number;
   maxRetries?: number;
   workerConstraints?: Partial<AgentWorkerConstraints>;
+  guardrails?: Partial<AuditGuardrailConfig>;
+  maxDynamicTasks?: number;
   now?: () => string;
 }
 
@@ -198,6 +209,8 @@ export class EphemeralStrandsOrchestrator {
   private readonly maxConcurrency: number;
   private readonly maxRetries: number;
   private readonly workerConstraints: AgentWorkerConstraints;
+  private readonly guardrailConfig: AuditGuardrailConfig;
+  private readonly maxDynamicTasks: number;
   private readonly now: () => string;
   private active = new Map<string, AgentWorkerSession>();
   private stopped = false;
@@ -208,8 +221,14 @@ export class EphemeralStrandsOrchestrator {
     private readonly launcher: AgentWorkerLauncher,
     options: EphemeralAuditOrchestratorOptions = {},
   ) {
-    this.maxConcurrency = Math.max(1, Math.min(options.maxConcurrency ?? 4, 4));
-    this.maxRetries = Math.max(0, Math.min(options.maxRetries ?? 1, 2));
+    this.guardrailConfig = normalizeGuardrails({
+      ...options.guardrails,
+      maxConcurrentWorkers: options.maxConcurrency ?? options.guardrails?.maxConcurrentWorkers,
+      maxWorkerRetries: options.maxRetries ?? options.guardrails?.maxWorkerRetries,
+    });
+    this.maxConcurrency = this.guardrailConfig.maxConcurrentWorkers;
+    this.maxRetries = this.guardrailConfig.maxWorkerRetries;
+    this.maxDynamicTasks = Math.max(0, Math.min(options.maxDynamicTasks ?? 12, 24));
     this.workerConstraints = safeConstraints(options.workerConstraints);
     this.now = options.now ?? (() => new Date().toISOString());
   }
@@ -245,14 +264,16 @@ export class EphemeralStrandsOrchestrator {
       const key = `${worker.role}:${worker.objective}`;
       if (seen.has(key)) throw new Error(`Planner returned duplicate worker: ${key}`);
       seen.add(key);
+      const skipReason = input.inapplicable?.[worker.role];
       return {
         id: `TASK-${index + 1}-${randomUUID().slice(0, 8)}`,
         role: worker.role,
         objective: worker.objective,
         mandatory: worker.mandatory,
-        state: 'queued',
+        state: skipReason ? 'skipped' : 'queued',
         attempts: 0,
         evidenceRefs: [],
+        skipReason,
       };
     });
     const createdAt = this.now();
@@ -261,7 +282,37 @@ export class EphemeralStrandsOrchestrator {
     const reports: AgentWorkerReport[] = [];
     const evidence: EvidenceInput[] = [];
     const events: AgentWorkerEvent[] = [];
+    const ledger = new AuditGuardrailLedger(this.guardrailConfig);
+    const evidenceKeys = new Set<string>();
+    const acceptEvidence = (item: EvidenceInput) => {
+      const key = JSON.stringify(item);
+      if (evidenceKeys.has(key)) return;
+      ledger.recordEvidence(item);
+      evidenceKeys.add(key);
+      evidence.push(item);
+    };
     let peakConcurrency = 0;
+    let dynamicTasks = 0;
+
+    const enqueueFollowUp = (role: AgentWorkerRole, objective: string, evidenceRefs: string[], reason: string): void => {
+      if (dynamicTasks >= this.maxDynamicTasks) return;
+      const key = `${role}:${objective}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      dynamicTasks += 1;
+      plan.tasks.push({
+        id: `TASK-DYN-${dynamicTasks}-${randomUUID().slice(0, 8)}`,
+        role,
+        objective,
+        mandatory: false,
+        state: input.inapplicable?.[role] ? 'skipped' : 'queued',
+        attempts: 0,
+        evidenceRefs: [...new Set(evidenceRefs)],
+        skipReason: input.inapplicable?.[role],
+        lastError: input.inapplicable?.[role] ? reason : undefined,
+      });
+      this.touch(plan);
+    };
 
     const runTask = async (task: AuditPlanTask): Promise<void> => {
       if (this.stopped) {
@@ -297,11 +348,13 @@ export class EphemeralStrandsOrchestrator {
       };
 
       let session: AgentWorkerSession | undefined;
+      let endWorker: (() => void) | undefined;
       try {
+        endWorker = ledger.beginWorker(brief.constraints.maxEstimatedSpendUsd ?? 0);
         session = await this.launcher.launch(brief, async (event) => {
           if (event.auditId !== auditId || event.workerId !== workerId) throw new Error('worker event identity mismatch');
           events.push(event);
-          if (event.type === 'worker.evidence') evidence.push(event.evidence);
+          if (event.type === 'worker.evidence') acceptEvidence(event.evidence);
           this.touch(plan);
         });
         this.active.set(workerId, session);
@@ -313,16 +366,42 @@ export class EphemeralStrandsOrchestrator {
           throw new Error('worker report identity mismatch');
         }
         reports.push(report);
-        evidence.push(...report.evidence);
+        for (const item of report.evidence) acceptEvidence(item);
         task.report = report;
         task.evidenceRefs = [...new Set([...task.evidenceRefs, ...report.evidenceRefs])];
         task.state = report.outcome === 'completed' ? 'completed' : report.outcome === 'incomplete' ? 'incomplete' : 'failed';
         this.touch(plan);
+
+        for (const followUp of report.followUps) {
+          enqueueFollowUp(followUp.role, followUp.objective, followUp.evidenceRefs, followUp.reason);
+        }
+        if (report.findingState === 'Unconfirmed' && report.findings.length > 0 && !report.followUps.some((item) => item.role === 'investigator')) {
+          enqueueFollowUp(
+            'investigator',
+            `Independently investigate: ${report.findings[0]}`,
+            report.evidenceRefs,
+            'A suspicious unconfirmed finding requires narrow independent investigation.',
+          );
+        }
+        const conflict = reports.find((other) =>
+          other.workerId !== report.workerId &&
+          other.findingState !== report.findingState &&
+          other.findings.some((finding) => report.findings.includes(finding))
+        );
+        if (conflict) {
+          enqueueFollowUp(
+            'judge',
+            `Resolve conflicting evidence about: ${report.findings.find((finding) => conflict.findings.includes(finding)) ?? report.summary}`,
+            [...new Set([...report.evidenceRefs, ...conflict.evidenceRefs])],
+            'Two isolated workers returned conflicting states for the same finding.',
+          );
+        }
       } catch (error: any) {
         task.lastError = String(error?.message ?? error);
         task.state = 'failed';
         this.touch(plan);
       } finally {
+        endWorker?.();
         if (session) {
           this.active.delete(workerId);
           try { await this.launcher.teardown(session); }
@@ -342,6 +421,7 @@ export class EphemeralStrandsOrchestrator {
 
     const pending = new Set<Promise<void>>();
     while (!this.stopped && (plan.tasks.some((task) => task.state === 'queued') || pending.size)) {
+      ledger.assertAuditTime();
       for (const task of plan.tasks) {
         if (task.state !== 'queued' || pending.size >= this.maxConcurrency) continue;
         let promise!: Promise<void>;
@@ -363,10 +443,10 @@ export class EphemeralStrandsOrchestrator {
     const outcome: AuditRunResult['outcome'] =
       mandatory.some((task) => task.state === 'failed' || task.state === 'incomplete')
         ? 'incomplete'
-        : mandatory.every((task) => task.state === 'completed')
+        : mandatory.every((task) => task.state === 'completed' || task.state === 'skipped')
           ? 'completed'
           : 'failed';
 
-    return { auditId, outcome, plan: clonePlan(plan), reports, evidence, events, peakConcurrency };
+    return { auditId, outcome, plan: clonePlan(plan), reports, evidence, events, peakConcurrency, guardrails: ledger.snapshot() };
   }
 }
