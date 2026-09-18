@@ -1,0 +1,93 @@
+name: VERIFIAI Real Repo E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: Real repository candidate
+        required: true
+        default: fastapi-full-stack
+        type: choice
+        options:
+          - fastapi-full-stack
+          - owasp-juice-shop
+          - docker-welcome
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  real-repo-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Preflight required configuration
+        shell: bash
+        env:
+          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+          VERIFIAI_AGENTCORE_RUNTIME_ARN: ${{ vars.VERIFIAI_AGENTCORE_RUNTIME_ARN }}
+          VERIFIAI_MODEL_PROVIDER: ${{ vars.VERIFIAI_MODEL_PROVIDER }}
+          VERIFIAI_MODEL_ID: ${{ vars.VERIFIAI_MODEL_ID }}
+          VERIFIAI_CODEBUILD_PROJECT: ${{ vars.VERIFIAI_CODEBUILD_PROJECT }}
+          VERIFIAI_ECR_REPOSITORY: ${{ vars.VERIFIAI_ECR_REPOSITORY }}
+          VERIFIAI_ECR_REGISTRY: ${{ vars.VERIFIAI_ECR_REGISTRY }}
+          VERIFIAI_ECS_CLUSTER: ${{ vars.VERIFIAI_ECS_CLUSTER }}
+          VERIFIAI_TARGET_TASK_DEFINITION: ${{ vars.VERIFIAI_TARGET_TASK_DEFINITION }}
+          VERIFIAI_TARGET_CONTAINER_NAME: ${{ vars.VERIFIAI_TARGET_CONTAINER_NAME }}
+          VERIFIAI_TARGET_SUBNET_IDS: ${{ vars.VERIFIAI_TARGET_SUBNET_IDS }}
+          VERIFIAI_TARGET_SECURITY_GROUP_IDS: ${{ vars.VERIFIAI_TARGET_SECURITY_GROUP_IDS }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in AWS_ROLE_ARN VERIFIAI_AGENTCORE_RUNTIME_ARN VERIFIAI_MODEL_PROVIDER VERIFIAI_MODEL_ID VERIFIAI_CODEBUILD_PROJECT VERIFIAI_ECR_REPOSITORY VERIFIAI_ECR_REGISTRY VERIFIAI_ECS_CLUSTER VERIFIAI_TARGET_TASK_DEFINITION VERIFIAI_TARGET_CONTAINER_NAME VERIFIAI_TARGET_SUBNET_IDS VERIFIAI_TARGET_SECURITY_GROUP_IDS; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing required configuration: $name"
+              missing=1
+            fi
+          done
+          test "$missing" -eq 0
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-west-2' }}
+
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
+
+      - name: Run real repository E2E
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION || 'us-west-2' }}
+          VERIFIAI_AGENTCORE_RUNTIME_ARN: ${{ vars.VERIFIAI_AGENTCORE_RUNTIME_ARN }}
+          VERIFIAI_MODEL_PROVIDER: ${{ vars.VERIFIAI_MODEL_PROVIDER }}
+          VERIFIAI_MODEL_ID: ${{ vars.VERIFIAI_MODEL_ID }}
+          VERIFIAI_MODEL_BASE_URL: ${{ vars.VERIFIAI_MODEL_BASE_URL }}
+          VERIFIAI_MODEL_SECRET_ID: ${{ vars.VERIFIAI_MODEL_SECRET_ID }}
+          VERIFIAI_MODEL_SECRET_FIELD: ${{ vars.VERIFIAI_MODEL_SECRET_FIELD }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+          VERIFIAI_CODEBUILD_PROJECT: ${{ vars.VERIFIAI_CODEBUILD_PROJECT }}
+          VERIFIAI_ECR_REPOSITORY: ${{ vars.VERIFIAI_ECR_REPOSITORY }}
+          VERIFIAI_ECR_REGISTRY: ${{ vars.VERIFIAI_ECR_REGISTRY }}
+          VERIFIAI_ECS_CLUSTER: ${{ vars.VERIFIAI_ECS_CLUSTER }}
+          VERIFIAI_TARGET_TASK_DEFINITION: ${{ vars.VERIFIAI_TARGET_TASK_DEFINITION }}
+          VERIFIAI_TARGET_CONTAINER_NAME: ${{ vars.VERIFIAI_TARGET_CONTAINER_NAME }}
+          VERIFIAI_TARGET_SUBNET_IDS: ${{ vars.VERIFIAI_TARGET_SUBNET_IDS }}
+          VERIFIAI_TARGET_SECURITY_GROUP_IDS: ${{ vars.VERIFIAI_TARGET_SECURITY_GROUP_IDS }}
+          VERIFIAI_COMPUTER_USE_URL: ${{ vars.VERIFIAI_COMPUTER_USE_URL }}
+          VERIFIAI_COMPUTER_USE_TOKEN: ${{ secrets.VERIFIAI_COMPUTER_USE_TOKEN }}
+        run: node scripts/real-repo-e2e.mjs "${{ inputs.repository }}"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: real-repo-e2e-${{ inputs.repository }}
+          path: artifacts/real-repo-e2e/
+          if-no-files-found: warn
