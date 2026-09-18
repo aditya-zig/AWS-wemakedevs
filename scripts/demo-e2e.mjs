@@ -1,6 +1,49 @@
-import { runFlagshipVerification } from '../services/integrations/flagship.mjs';
+import { rm } from 'node:fs/promises';
+import { DeepAuditService } from '../services/deep-audit/index.mjs';
 
+const root = '/tmp/verifiai-clean-deep-demo';
+const knowledgeFile = '/tmp/verifiai-clean-deep-demo-knowledge.json';
+await rm(root, { recursive: true, force: true });
+await rm(knowledgeFile, { force: true });
+
+const service = new DeepAuditService({ sandboxRoot: root, knowledgeFile });
 const runs = [];
-for (let i = 1; i <= 2; i += 1) runs.push(await runFlagshipVerification({ runId: `clean-demo-${i}` }));
-const summary = runs.map((run) => ({ runId: run.runId, before: run.before.verdict, after: run.after.verdict, regressions: run.regressions, chaosRestored: run.chaosRestored, evidence: run.evidence.length }));
-console.log(JSON.stringify({ ok: summary.every((r) => r.before === 'FAILED' && r.after === 'VERIFIED' && r.regressions === 0 && r.chaosRestored), runs: summary }, null, 2));
+for (let i = 1; i <= 2; i += 1) {
+  runs.push(await service.run({
+    runId: `clean-deep-demo-${i}`,
+    repository: 'acme/checkout',
+    commitSha: 'fixture-demo',
+    guardrails: { maxRunUsd: 2.5, maxHttpRequests: 80, maxConcurrentEngines: 4 }
+  }));
+}
+
+const summary = runs.map((run) => ({
+  runId: run.runId,
+  engines: run.engines.length,
+  confirmedFindings: run.findings.filter((finding) => finding.state === 'Confirmed').length,
+  incomplete: run.coverage.incomplete,
+  fix: run.fix.status,
+  targeted: `${run.fix.targeted.passed}/${run.fix.targeted.total}`,
+  regressions: run.fix.regressionFailures,
+  prReady: run.fix.pr.ready,
+  spendUsd: run.guardrails.estimatedRunSpendUsd,
+  hardRunCapUsd: run.guardrails.hardRunCapUsd,
+  guardrails: run.guardrails.withinGuardrails
+}));
+
+const ok = summary.every((run) =>
+  run.engines >= 10 &&
+  run.confirmedFindings >= 3 &&
+  run.fix === 'verified' &&
+  run.targeted === '10/10' &&
+  run.regressions === 0 &&
+  run.prReady === true &&
+  run.guardrails === true &&
+  run.spendUsd <= run.hardRunCapUsd
+);
+
+console.log(JSON.stringify({ ok, runs: summary }, null, 2));
+if (!ok) process.exitCode = 1;
+
+await rm(root, { recursive: true, force: true });
+await rm(knowledgeFile, { force: true });
