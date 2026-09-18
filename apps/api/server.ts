@@ -4,11 +4,13 @@ import type { GitHubOAuthService, RepositoryImportService } from '../../packages
 import { buildVerificationPlan, parseRequirements } from '../../packages/core/planning/index.js';
 import type { Experiment } from '../../packages/contracts/src/index.js';
 import type { RunService } from './runs/service.js';
+import type { LiveAuditService } from './swarms/service.js';
 
 export interface ApiDependencies {
   oauth: GitHubOAuthService;
   importer: RepositoryImportService;
   runs?: RunService;
+  swarms?: LiveAuditService;
   webUrl?: string;
   secureCookies?: boolean;
 }
@@ -149,6 +151,45 @@ export function createApiServer(deps: ApiDependencies): Server {
         if (!validRequirements(body.requirements)) return respond(response, 400, { error: 'requirements must be a non-empty string array' });
         const requirements = parseRequirements(body.requirements);
         return respond(response, 200, { requirements, experiments: buildVerificationPlan(requirements) });
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/audits') {
+        if (!deps.swarms) return respond(response, 503, { error: 'real swarm service unavailable' });
+        const body = await readJson(request);
+        const repository = body?.repository;
+        if (
+          !repository ||
+          repository.provider !== 'github' ||
+          ![repository.fullName, repository.url, repository.branch, repository.commitSha].every((value) => typeof value === 'string' && value)
+        ) return respond(response, 400, { error: 'repository must include provider=github, fullName, url, branch and commitSha' });
+        const target = body?.target ?? null;
+        if (target !== null && (typeof target?.id !== 'string' || (target.url !== undefined && typeof target.url !== 'string'))) {
+          return respond(response, 400, { error: 'target must be null or include id and optional url' });
+        }
+        const audit = await deps.swarms.start({
+          repository,
+          target,
+          objective: typeof body?.objective === 'string' ? body.objective : undefined,
+        });
+        return respond(response, 202, { audit });
+      }
+      const swarmState = url.pathname.match(/^\/api\/audits\/([^/]+)\/swarm$/);
+      if (request.method === 'GET' && swarmState) {
+        if (!deps.swarms) return respond(response, 503, { error: 'real swarm service unavailable' });
+        const audit = deps.swarms.get(swarmState[1]);
+        return audit ? respond(response, 200, { audit }) : respond(response, 404, { error: 'audit not found' });
+      }
+      const swarmSteer = url.pathname.match(/^\/api\/audits\/([^/]+)\/steer$/);
+      if (request.method === 'POST' && swarmSteer) {
+        if (!deps.swarms) return respond(response, 503, { error: 'real swarm service unavailable' });
+        const body = await readJson(request);
+        if (typeof body?.objective !== 'string' || !body.objective.trim()) return respond(response, 400, { error: 'objective is required' });
+        return respond(response, 202, { audit: deps.swarms.steer(swarmSteer[1], body.objective) });
+      }
+      const swarmStop = url.pathname.match(/^\/api\/audits\/([^/]+)\/stop$/);
+      if (request.method === 'POST' && swarmStop) {
+        if (!deps.swarms) return respond(response, 503, { error: 'real swarm service unavailable' });
+        return respond(response, 200, { audit: await deps.swarms.stop(swarmStop[1]) });
       }
 
       if (request.method === 'POST' && url.pathname === '/api/runs') {
