@@ -1,0 +1,43 @@
+name: Deploy VERIFIAI AWS target stack
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-west-2' }}
+      VERIFIAI_VPC_ID: ${{ vars.VERIFIAI_VPC_ID }}
+      VERIFIAI_VPC_CIDR: ${{ vars.VERIFIAI_VPC_CIDR || '10.0.0.0/16' }}
+      VERIFIAI_TARGET_SUBNET_IDS: ${{ vars.VERIFIAI_TARGET_SUBNET_IDS }}
+      VERIFIAI_TARGET_STACK: ${{ vars.VERIFIAI_TARGET_STACK || 'verifiai-real-target' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in AWS_ROLE_ARN VERIFIAI_VPC_ID VERIFIAI_TARGET_SUBNET_IDS; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing required configuration: $name"
+              exit 1
+            fi
+          done
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Deploy CodeBuild ECR Fargate target stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws cloudformation deploy             --stack-name "$VERIFIAI_TARGET_STACK"             --template-file infra/aws/real-target-stack.yml             --capabilities CAPABILITY_IAM             --no-fail-on-empty-changeset             --parameter-overrides               VpcId="$VERIFIAI_VPC_ID"               VpcCidr="$VERIFIAI_VPC_CIDR"               TargetSubnetIds="$VERIFIAI_TARGET_SUBNET_IDS"
+      - name: Print verified stack outputs
+        run: aws cloudformation describe-stacks --stack-name "$VERIFIAI_TARGET_STACK" --query 'Stacks[0].Outputs' --output table
