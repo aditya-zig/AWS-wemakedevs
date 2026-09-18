@@ -80,7 +80,7 @@ export function buildSpecialistPolicy(input: {
   if (input.target?.url) {
     approvedTools['browser-app-user'] = [{
       name: 'browser',
-      capabilities: ['browser-interact', 'computer-use', 'browser-use', 'cua'],
+      capabilities: ['browser-interact', 'computer-use', 'browser-use', 'cua', 'mirofish', 'personas', 'customer-simulation'],
       executionClass: 'agent-native',
     }];
   } else {
