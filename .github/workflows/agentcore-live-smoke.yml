@@ -1,0 +1,67 @@
+name: AgentCore live acceptance
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/agentcore-live-smoke.yml"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  live-agentcore-smoke:
+    runs-on: ubuntu-latest
+    env:
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      VERIFIAI_AGENTCORE_RUNTIME_ARN: ${{ secrets.VERIFIAI_AGENTCORE_RUNTIME_ARN }}
+      VERIFIAI_AGENTCORE_MODEL_PROFILE: ${{ secrets.VERIFIAI_AGENTCORE_MODEL_PROFILE }}
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-west-2' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: config
+        name: Check live AgentCore configuration
+        shell: bash
+        run: |
+          missing=()
+          [[ -z "$AWS_ROLE_ARN" ]] && missing+=("AWS_ROLE_ARN")
+          [[ -z "$VERIFIAI_AGENTCORE_RUNTIME_ARN" ]] && missing+=("VERIFIAI_AGENTCORE_RUNTIME_ARN")
+          [[ -z "$VERIFIAI_AGENTCORE_MODEL_PROFILE" ]] && missing+=("VERIFIAI_AGENTCORE_MODEL_PROFILE")
+          if (( ${#missing[@]} )); then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Live AgentCore acceptance not runnable; missing repository configuration: ${missing[*]}"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure AWS via OIDC
+        if: steps.config.outputs.ready == 'true'
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: actions/setup-node@v4
+        if: steps.config.outputs.ready == 'true'
+        with:
+          node-version: 22
+
+      - name: Install
+        if: steps.config.outputs.ready == 'true'
+        run: npm install --no-audit --no-fund
+
+      - name: Run live AgentCore lifecycle proof
+        if: steps.config.outputs.ready == 'true'
+        run: npm run verify:agentcore
+
+      - name: Acceptance status
+        if: always()
+        shell: bash
+        run: |
+          if [[ "${{ steps.config.outputs.ready }}" != "true" ]]; then
+            echo "A04 LIVE ACCEPTANCE: BLOCKED — AgentCore AWS role/runtime/model profile are not configured."
+          else
+            echo "A04 LIVE ACCEPTANCE: smoke step attempted; inspect its result above."
+          fi
