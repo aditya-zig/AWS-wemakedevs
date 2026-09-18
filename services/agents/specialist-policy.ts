@@ -19,6 +19,7 @@ export function buildSpecialistPolicy(input: {
   modelProfileId: string;
   target: AuditTargetRef | null;
   computerUseUrl?: string;
+  externalEngineUrl?: string;
 }): SpecialistPolicy {
   const provider = input.modelProfileId.split(':', 1)[0] as ModelProviderName;
   const profile = MODEL_PROVIDER_PROFILES[provider];
@@ -31,21 +32,22 @@ export function buildSpecialistPolicy(input: {
   ]);
   if (input.target?.url) networkAllowlist.add(host(input.target.url));
   if (input.computerUseUrl) networkAllowlist.add(host(input.computerUseUrl));
+  if (input.externalEngineUrl) networkAllowlist.add(host(input.externalEngineUrl));
 
   const approvedTools: SpecialistPolicy['approvedTools'] = {
     'security-secrets': [{
       name: 'repository',
-      capabilities: ['repository-read', 'source-inspection', 'security-analysis'],
+      capabilities: ['repository-read', 'source-inspection', 'security-analysis', 'strix'],
       executionClass: 'agent-native',
     }],
     'api-chaos': [{
       name: 'api',
-      capabilities: ['http-request', 'api-probe', 'bounded-chaos'],
+      capabilities: ['http-request', 'api-probe', 'schemathesis', 'bounded-chaos', 'toxiproxy'],
       executionClass: 'agent-native',
     }],
     'performance-discovery': [{
       name: 'performance',
-      capabilities: ['http-request', 'performance-probe', 'discovery'],
+      capabilities: ['http-request', 'performance-probe', 'locust', 'k6', 'load', 'discovery'],
       executionClass: 'agent-native',
     }],
     hypothesis: [{
@@ -55,7 +57,7 @@ export function buildSpecialistPolicy(input: {
     }],
     investigator: [{
       name: 'investigation',
-      capabilities: ['repository-read', 'http-request', 'performance-probe'],
+      capabilities: ['repository-read', 'http-request', 'performance-probe', 'schemathesis', 'strix', 'locust', 'k6'],
       executionClass: 'agent-native',
     }],
     judge: [{
