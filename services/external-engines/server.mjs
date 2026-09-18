@@ -4,6 +4,7 @@ import { createSchemathesisAdapter } from '../../packages/adapters/schemathesis/
 import { createPerformanceAdapter } from '../../packages/adapters/performance/index.mjs';
 import { createToxiproxyAdapter } from '../../packages/adapters/toxiproxy/index.mjs';
 import { createZapAdapter } from '../../packages/adapters/zap/index.mjs';
+import { createMiroFishAdapter } from '../../packages/adapters/mirofish/index.mjs';
 
 const MAX_BODY_BYTES = 256 * 1024;
 
@@ -14,6 +15,7 @@ function adapterFor(engine) {
   if (engine === 'k6') return createPerformanceAdapter({ engine: 'k6' });
   if (engine === 'toxiproxy') return createToxiproxyAdapter();
   if (engine === 'zap') return createZapAdapter();
+  if (engine === 'mirofish') return createMiroFishAdapter();
   throw new Error(`unsupported external engine: ${engine}`);
 }
 
@@ -80,7 +82,7 @@ export function createExternalEngineServer() {
         return;
       }
       if (req.method === 'GET' && req.url === '/health') {
-        const engines = ['strix', 'zap', 'schemathesis', 'locust', 'k6', 'toxiproxy'];
+        const engines = ['strix', 'zap', 'schemathesis', 'locust', 'k6', 'toxiproxy', 'mirofish'];
         const checks = {};
         for (const engine of engines) {
           try { checks[engine] = await adapterFor(engine).healthcheck(); }
