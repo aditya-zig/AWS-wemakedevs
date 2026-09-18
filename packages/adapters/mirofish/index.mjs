@@ -54,16 +54,21 @@ export function createMiroFishAdapter({
 
   async function ensureProject(config, requirement) {
     if (config.projectId) return config.projectId;
-    if (!Array.isArray(config.files) || config.files.length === 0) {
-      throw new Error('MiroFish requires projectId or real seed files');
+    const files = Array.isArray(config.files) ? config.files : [];
+    const seedText = typeof config.seedText === 'string' ? config.seedText.trim() : '';
+    if (files.length === 0 && !seedText) {
+      throw new Error('MiroFish requires projectId, real seed files, or seedText converted into a seed document');
     }
     const form = new FormData();
     form.set('simulation_requirement', requirement);
     form.set('project_name', config.projectName ?? 'VERIFIAI customer simulation');
     if (config.additionalContext) form.set('additional_context', String(config.additionalContext));
-    for (const path of config.files) {
+    for (const path of files) {
       const bytes = await readFile(path);
       form.append('files', new Blob([bytes]), basename(path));
+    }
+    if (seedText) {
+      form.append('files', new Blob([seedText], { type: 'text/markdown' }), 'verifiai-product-context.md');
     }
     const ontology = await request('/api/graph/ontology/generate', { method: 'POST', body: form });
     if (!ontology?.project_id) throw new Error('MiroFish ontology response did not include project_id');
