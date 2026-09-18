@@ -28,6 +28,11 @@ const violations = [
     patterns: ["source: 'sandbox-chaos'", "injectFault(runId"],
     reason: 'An in-memory fault record is not Toxiproxy/network fault execution evidence.',
   },
+  {
+    file: 'services/integrations/flagship.mjs',
+    patterns: ["source: 'sandbox-chaos'", "source: 'cua-fallback'", "source: 'repair-fallback'", "injectFault(runId"],
+    reason: 'Legacy demo code must not fabricate external-engine or repair evidence.',
+  },
 ];
 
 let failed = false;
