@@ -9,6 +9,7 @@ import { createStrixAdapter } from '../../packages/adapters/strix/index.mjs';
 import { createApiAdapter } from '../../packages/adapters/api/index.mjs';
 import { createPerformanceAdapter } from '../../packages/adapters/performance/index.mjs';
 import { createMiroFishAdapter } from '../../packages/adapters/mirofish/index.mjs';
+import { createToxiproxyAdapter } from '../../packages/adapters/toxiproxy/index.mjs';
 
 const ENGINE_COST = {
   security: 0.08, leakage: 0.02, api: 0.03, browser: 0.06,
@@ -538,7 +539,8 @@ export class DeepAuditService {
         .register(createStrixAdapter({ allowedHost: '127.0.0.1' }))
         .register(createApiAdapter())
         .register(createPerformanceAdapter())
-        .register(createMiroFishAdapter({ maxPersonas: guard.maxPersonas }));
+        .register(createMiroFishAdapter())
+        .register(createToxiproxyAdapter());
       const desktopRuntime = () => new AdapterRuntime().register(createCuaAdapter({ targetUrl: target.baseUrl }));
 
       const exp = (id, tool, type, description) => ({ id, requirementId: `REQ-${id}`, type, tool, description, status: 'pending', attempts: 0, evidenceIds: [] });
@@ -548,7 +550,8 @@ export class DeepAuditService {
           runId,
           api: { path: '/health', expectedStatus: 200, expectedJson: { ok: true } },
           performance: { path: '/slow', requests: 8, concurrency: 2, maxP95Ms: 10, maxErrorRate: 0 },
-          mirofish: { scenarioId: 'checkout-recovery', personas: ['impatient-mobile', 'careful-desktop', 'repeat-buyer', 'first-time-user'], simulatedFailures: ['impatient-mobile'] }
+          mirofish: input.mirofish ?? {},
+          toxiproxy: input.toxiproxy ?? {}
         }
       };
 
@@ -587,16 +590,11 @@ export class DeepAuditService {
             crossCheck: hits.length ? 'independent' : undefined
           };
         }, { retries: 1, guard })),
-        tracked('chaos', () => withRetries('chaos', async (attempt) => {
-          const fault = this.sandbox.injectFault(runId, { kind: 'latency', dependency: 'payment-provider', latencyMs: 8000 });
-          const evidence = [
-            { kind: 'runtime', source: 'sandbox-chaos', executed: true, payload: { fault, attempt: attempt + 1, outcome: 'fail' } },
-            { kind: 'network', source: 'sandbox-chaos', executed: true, payload: { endpoint: '/payments/confirm', latencyMs: 8000, timeoutMs: 5000, timedOut: true, outcome: 'fail' } },
-            { kind: 'screenshot', source: 'browser-reproduction', executed: true, payload: { state: 'checkout-loading-stuck', attempt: attempt + 1, outcome: 'fail' } }
-          ];
-          this.sandbox.clearFaults(runId);
-          return { status: 'fail', observations: ['Checkout remained stuck after payment timeout'], evidence };
-        }, { retries: 1, guard }))
+        tracked('chaos', () => withRetries('chaos', () => runtime.execute(
+          'chaos',
+          exp('chaos', 'chaos', 'chaos', 'Inject a real bounded network fault through Toxiproxy'),
+          context
+        ), { retries: 1, guard }))
       ];
 
       const engines = await pool(tasks, guard.maxConcurrentEngines);
