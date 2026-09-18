@@ -21,6 +21,19 @@ jobs:
   real-repo-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    env:
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-west-2' }}
+      VERIFIAI_TARGET_STACK: ${{ vars.VERIFIAI_TARGET_STACK || 'verifiai-real-target' }}
+      VERIFIAI_AGENTCORE_STACK: ${{ vars.VERIFIAI_AGENTCORE_STACK || 'verifiai-agentcore' }}
+      VERIFIAI_MODEL_PROVIDER: ${{ vars.VERIFIAI_MODEL_PROVIDER }}
+      VERIFIAI_MODEL_ID: ${{ vars.VERIFIAI_MODEL_ID }}
+      VERIFIAI_MODEL_BASE_URL: ${{ vars.VERIFIAI_MODEL_BASE_URL }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+      OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+      VERIFIAI_COMPUTER_USE_URL: ${{ vars.VERIFIAI_COMPUTER_USE_URL }}
+      VERIFIAI_COMPUTER_USE_TOKEN: ${{ secrets.VERIFIAI_COMPUTER_USE_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -29,62 +42,56 @@ jobs:
 
       - name: Preflight required configuration
         shell: bash
-        env:
-          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
-          VERIFIAI_AGENTCORE_RUNTIME_ARN: ${{ vars.VERIFIAI_AGENTCORE_RUNTIME_ARN }}
-          VERIFIAI_MODEL_PROVIDER: ${{ vars.VERIFIAI_MODEL_PROVIDER }}
-          VERIFIAI_MODEL_ID: ${{ vars.VERIFIAI_MODEL_ID }}
-          VERIFIAI_CODEBUILD_PROJECT: ${{ vars.VERIFIAI_CODEBUILD_PROJECT }}
-          VERIFIAI_ECR_REPOSITORY: ${{ vars.VERIFIAI_ECR_REPOSITORY }}
-          VERIFIAI_ECR_REGISTRY: ${{ vars.VERIFIAI_ECR_REGISTRY }}
-          VERIFIAI_ECS_CLUSTER: ${{ vars.VERIFIAI_ECS_CLUSTER }}
-          VERIFIAI_TARGET_TASK_DEFINITION: ${{ vars.VERIFIAI_TARGET_TASK_DEFINITION }}
-          VERIFIAI_TARGET_CONTAINER_NAME: ${{ vars.VERIFIAI_TARGET_CONTAINER_NAME }}
-          VERIFIAI_TARGET_SUBNET_IDS: ${{ vars.VERIFIAI_TARGET_SUBNET_IDS }}
-          VERIFIAI_TARGET_SECURITY_GROUP_IDS: ${{ vars.VERIFIAI_TARGET_SECURITY_GROUP_IDS }}
-          VERIFIAI_HEALTH_PROBE_FUNCTION: ${{ vars.VERIFIAI_HEALTH_PROBE_FUNCTION }}
         run: |
           set -euo pipefail
-          missing=0
-          for name in AWS_ROLE_ARN VERIFIAI_AGENTCORE_RUNTIME_ARN VERIFIAI_MODEL_PROVIDER VERIFIAI_MODEL_ID VERIFIAI_CODEBUILD_PROJECT VERIFIAI_ECR_REPOSITORY VERIFIAI_ECR_REGISTRY VERIFIAI_ECS_CLUSTER VERIFIAI_TARGET_TASK_DEFINITION VERIFIAI_TARGET_CONTAINER_NAME VERIFIAI_TARGET_SUBNET_IDS VERIFIAI_TARGET_SECURITY_GROUP_IDS VERIFIAI_HEALTH_PROBE_FUNCTION; do
+          for name in AWS_ROLE_ARN VERIFIAI_MODEL_PROVIDER VERIFIAI_MODEL_ID; do
             if [ -z "${!name:-}" ]; then
               echo "::error::Missing required configuration: $name"
-              missing=1
+              exit 1
             fi
           done
-          test "$missing" -eq 0
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION || 'us-west-2' }}
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve deployed AWS stack outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          target_output() {
+            aws cloudformation describe-stacks --stack-name "$VERIFIAI_TARGET_STACK" --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue | [0]" --output text
+          }
+          target_param() {
+            aws cloudformation describe-stacks --stack-name "$VERIFIAI_TARGET_STACK" --query "Stacks[0].Parameters[?ParameterKey=='$1'].ParameterValue | [0]" --output text
+          }
+          runtime_arn="$(aws cloudformation describe-stacks --stack-name "$VERIFIAI_AGENTCORE_STACK" --query "Stacks[0].Outputs[?OutputKey=='AgentRuntimeArn'].OutputValue | [0]" --output text)"
+          values=(
+            "VERIFIAI_AGENTCORE_RUNTIME_ARN=$runtime_arn"
+            "VERIFIAI_CODEBUILD_PROJECT=$(target_output CodeBuildProjectName)"
+            "VERIFIAI_ECR_REPOSITORY=$(target_output EcrRepositoryName)"
+            "VERIFIAI_ECR_REGISTRY=$(target_output EcrRegistry)"
+            "VERIFIAI_ECS_CLUSTER=$(target_output EcsClusterName)"
+            "VERIFIAI_TARGET_TASK_DEFINITION=$(target_output BaseTaskDefinitionArn)"
+            "VERIFIAI_TARGET_CONTAINER_NAME=$(target_output TargetContainerName)"
+            "VERIFIAI_TARGET_SUBNET_IDS=$(target_param TargetSubnetIds)"
+            "VERIFIAI_TARGET_SECURITY_GROUP_IDS=$(target_output TargetSecurityGroupId)"
+            "VERIFIAI_HEALTH_PROBE_FUNCTION=$(target_output HealthProbeFunctionName)"
+          )
+          for item in "${values[@]}"; do
+            value="${item#*=}"
+            if [ -z "$value" ] || [ "$value" = "None" ]; then
+              echo "::error::Missing deployed stack output: ${item%%=*}"
+              exit 1
+            fi
+            echo "$item" >> "$GITHUB_ENV"
+          done
 
       - run: npm install --no-audit --no-fund
       - run: npm run build
 
       - name: Run real repository E2E
-        env:
-          AWS_REGION: ${{ vars.AWS_REGION || 'us-west-2' }}
-          VERIFIAI_AGENTCORE_RUNTIME_ARN: ${{ vars.VERIFIAI_AGENTCORE_RUNTIME_ARN }}
-          VERIFIAI_MODEL_PROVIDER: ${{ vars.VERIFIAI_MODEL_PROVIDER }}
-          VERIFIAI_MODEL_ID: ${{ vars.VERIFIAI_MODEL_ID }}
-          VERIFIAI_MODEL_BASE_URL: ${{ vars.VERIFIAI_MODEL_BASE_URL }}
-          VERIFIAI_MODEL_SECRET_ID: ${{ vars.VERIFIAI_MODEL_SECRET_ID }}
-          VERIFIAI_MODEL_SECRET_FIELD: ${{ vars.VERIFIAI_MODEL_SECRET_FIELD }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
-          OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
-          VERIFIAI_CODEBUILD_PROJECT: ${{ vars.VERIFIAI_CODEBUILD_PROJECT }}
-          VERIFIAI_ECR_REPOSITORY: ${{ vars.VERIFIAI_ECR_REPOSITORY }}
-          VERIFIAI_ECR_REGISTRY: ${{ vars.VERIFIAI_ECR_REGISTRY }}
-          VERIFIAI_ECS_CLUSTER: ${{ vars.VERIFIAI_ECS_CLUSTER }}
-          VERIFIAI_TARGET_TASK_DEFINITION: ${{ vars.VERIFIAI_TARGET_TASK_DEFINITION }}
-          VERIFIAI_TARGET_CONTAINER_NAME: ${{ vars.VERIFIAI_TARGET_CONTAINER_NAME }}
-          VERIFIAI_TARGET_SUBNET_IDS: ${{ vars.VERIFIAI_TARGET_SUBNET_IDS }}
-          VERIFIAI_TARGET_SECURITY_GROUP_IDS: ${{ vars.VERIFIAI_TARGET_SECURITY_GROUP_IDS }}
-          VERIFIAI_HEALTH_PROBE_FUNCTION: ${{ vars.VERIFIAI_HEALTH_PROBE_FUNCTION }}
-          VERIFIAI_COMPUTER_USE_URL: ${{ vars.VERIFIAI_COMPUTER_USE_URL }}
-          VERIFIAI_COMPUTER_USE_TOKEN: ${{ secrets.VERIFIAI_COMPUTER_USE_TOKEN }}
         run: node scripts/real-repo-e2e.mjs "${{ inputs.repository }}"
 
       - uses: actions/upload-artifact@v4
