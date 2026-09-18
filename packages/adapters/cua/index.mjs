@@ -62,7 +62,7 @@ export function createCuaAdapter({
         }),
       });
       const identityOk = result.engine === 'Cua' && result.upstreamCommit === UPSTREAM.commit;
-      const status = identityOk && result.ok === true ? 'pass' : 'unknown';
+      const status = identityOk && result.ok === true && result.completed === true ? 'pass' : 'unknown';
       lastEvidence = [{
         kind: 'screenshot',
         source: 'cua',
