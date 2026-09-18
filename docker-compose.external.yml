@@ -16,15 +16,31 @@ services:
     networks: [verifiai]
     restart: unless-stopped
 
+  zap:
+    build:
+      context: .
+      dockerfile: services/zap/Dockerfile
+    ports:
+      - "8080:8080"
+    mem_limit: 1536m
+    cpus: 1.5
+    pids_limit: 384
+    security_opt:
+      - no-new-privileges:true
+    networks: [verifiai]
+    restart: unless-stopped
+
   external-engines:
     build:
       context: .
       dockerfile: services/external-engines/Dockerfile
     depends_on:
       - toxiproxy
+      - zap
     environment:
       PORT: "8789"
       TOXIPROXY_URL: "http://toxiproxy:8474"
+      VERIFIAI_ZAP_URL: "http://zap:8080"
       STRIX_LLM: "${STRIX_LLM:-}"
       LLM_API_KEY: "${LLM_API_KEY:-}"
     ports:
