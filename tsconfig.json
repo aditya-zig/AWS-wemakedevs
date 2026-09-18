@@ -12,5 +12,11 @@
     "resolveJsonModule": true,
     "noEmitOnError": true
   },
-  "include": ["apps/**/*.ts", "packages/**/*.ts", "tests/**/*.ts", "types/**/*.d.ts"]
+  "include": [
+    "apps/**/*.ts",
+    "packages/**/*.ts",
+    "tests/**/*.ts",
+    "types/**/*.d.ts",
+    "services/**/*.ts"
+  ]
 }
