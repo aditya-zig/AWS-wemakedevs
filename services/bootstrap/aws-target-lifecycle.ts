@@ -179,7 +179,17 @@ export class AwsTargetLifecycle {
     const baseTask = base?.taskDefinition;
     if (!baseTask) throw new AwsTargetLifecycleError('launch', 'Base ECS task definition could not be loaded');
     const containers = (baseTask.containerDefinitions ?? []).map((container: any) =>
-      container.name === this.config.containerName ? { ...container, image: imageUri } : container
+      container.name === this.config.containerName
+        ? {
+            ...container,
+            image: imageUri,
+            portMappings: [{
+              containerPort: this.config.containerPort,
+              hostPort: this.config.containerPort,
+              protocol: 'tcp',
+            }],
+          }
+        : container
     );
     if (!containers.some((container: any) => container.name === this.config.containerName && container.image === imageUri)) {
       throw new AwsTargetLifecycleError('launch', `Container ${this.config.containerName} was not found in the base task definition`);
