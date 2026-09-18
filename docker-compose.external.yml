@@ -37,10 +37,12 @@ services:
     depends_on:
       - toxiproxy
       - zap
+      - mirofish
     environment:
       PORT: "8789"
       TOXIPROXY_URL: "http://toxiproxy:8474"
       VERIFIAI_ZAP_URL: "http://zap:8080"
+      VERIFIAI_MIROFISH_URL: "http://mirofish:5001"
       STRIX_LLM: "${STRIX_LLM:-}"
       LLM_API_KEY: "${LLM_API_KEY:-}"
     ports:
