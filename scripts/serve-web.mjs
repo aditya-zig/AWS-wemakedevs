@@ -2,7 +2,6 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runFlagshipVerification } from '../services/integrations/flagship.mjs';
 import { DeepAuditService } from '../services/deep-audit/index.mjs';
 
 const root = fileURLToPath(new URL('../apps/web/', import.meta.url));
@@ -32,15 +31,6 @@ async function readJson(req) {
 export function createDemoServer({ deepAudit = new DeepAuditService() } = {}) {
   return createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
-
-    if (req.method === 'POST' && url.pathname === '/api/demo/flagship') {
-      try {
-        const run = await runFlagshipVerification();
-        return sendJson(res, 200, { run });
-      } catch (error) {
-        return sendJson(res, 500, { error: String(error?.message ?? error) });
-      }
-    }
 
     if (req.method === 'POST' && url.pathname === '/api/demo/deep-audit') {
       try {
