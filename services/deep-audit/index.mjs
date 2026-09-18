@@ -617,17 +617,29 @@ export class DeepAuditService {
 
       const findings = buildFindings(engines);
       const reportCoverage = coverage(engines);
-      const fix = await verifyFix({ sandbox: this.sandbox, runId, guard });
-      const checkoutFinding = findings.find((finding) => finding.id === 'FND-CHECKOUT');
-      if (checkoutFinding) checkoutFinding.fix = { status: fix.status, branch: fix.branch, proofVideo: fix.proofVideo, prReady: fix.pr.ready };
+      const checkoutFinding = findings.find((finding) => finding.id === 'FND-CHECKOUT' && finding.state === 'Confirmed');
+      const fix = {
+        status: 'not-run',
+        reason: checkoutFinding
+          ? 'Legacy deterministic Deep Audit cannot repair or verify its own finding. Use the real Strands repair + independent re-verification workers.'
+          : 'No confirmed checkout failure from real executed evidence; repair gate remains closed.',
+        branch: null,
+        patch: null,
+        targeted: { name: 'real repair verification', passed: 0, total: 0 },
+        regressions: [],
+        regressionFailures: null,
+        proofVideo: null,
+        pr: { ready: false, action: 'Create PR', autoMerge: false, requiresHumanApproval: true },
+      };
+      if (checkoutFinding) checkoutFinding.fix = { status: fix.status, prReady: false, reason: fix.reason };
 
       const overall = reportCoverage.incomplete > 0 || reportCoverage.unknown > 0
-        ? 'Verified with limitations'
-        : findings.some((finding) => finding.state === 'Confirmed' && finding.impact === 'Critical')
-          ? 'Issues confirmed — fix verified'
-          : 'Verified';
+        ? 'Completed with limitations'
+        : findings.some((finding) => finding.state === 'Confirmed')
+          ? 'Issues confirmed — repair requires real swarm'
+          : 'Completed — no confirmed issues';
 
-      events.push({ type: 'fix.verified', at: now(), runId, message: `${fix.targeted.passed}/${fix.targeted.total} targeted checks passed; ${fix.regressionFailures} regressions` });
+      events.push({ type: 'fix.not-run', at: now(), runId, message: fix.reason });
       events.push({ type: 'run.completed', at: now(), runId, message: overall });
 
       const facts = [
