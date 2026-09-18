@@ -152,3 +152,62 @@ test('A05 reports exact CodeBuild failure instead of fake success', async () => 
     },
   );
 });
+
+
+test('A05 private target health can be verified through the VPC Lambda probe', async () => {
+  const probeConfig = { ...config, healthProbeFunctionName: 'verifiai-private-health' };
+  const lambdaCalls: any[] = [];
+  const lifecycle = new AwsTargetLifecycle(probeConfig, {
+    codebuild: {
+      async send(command: any) {
+        if (command.constructor.name === 'StartBuildCommand') return { build: { id: 'build-private' } };
+        return { builds: [{ buildStatus: 'SUCCEEDED' }] };
+      },
+    },
+    ecr: { async send() { return { imageDetails: [{ imageDigest: 'sha256:private' }] }; } },
+    ecs: {
+      async send(command: any) {
+        switch (command.constructor.name) {
+          case 'DescribeTaskDefinitionCommand':
+            return { taskDefinition: {
+              family: 'verifiai-target-base',
+              networkMode: 'awsvpc',
+              cpu: '512',
+              memory: '1024',
+              requiresCompatibilities: ['FARGATE'],
+              executionRoleArn: 'arn:execution',
+              containerDefinitions: [{ name: 'target', image: 'old:image', essential: true }],
+            } };
+          case 'RegisterTaskDefinitionCommand':
+            return { taskDefinition: { taskDefinitionArn: 'arn:task-definition:private:1' } };
+          case 'RunTaskCommand':
+            return { tasks: [{ taskArn: 'arn:task:private' }], failures: [] };
+          case 'DescribeTasksCommand':
+            return { tasks: [{
+              taskArn: 'arn:task:private',
+              lastStatus: 'RUNNING',
+              attachments: [{ details: [{ name: 'privateIPv4Address', value: '10.0.9.25' }] }],
+            }] };
+          default:
+            return {};
+        }
+      },
+    },
+    lambda: {
+      async send(command: any) {
+        lambdaCalls.push(command.input);
+        return {
+          Payload: new TextEncoder().encode(JSON.stringify({ ok: true, statusCode: 200 })),
+        };
+      },
+    },
+    fetchFn: (async () => { throw new Error('direct fetch must not run for private probe'); }) as typeof fetch,
+    sleep: async () => {},
+  });
+
+  const handle = await lifecycle.start(request);
+  assert.equal(handle.healthUrl, 'http://10.0.9.25:3000/health');
+  assert.equal(lambdaCalls.length, 1);
+  assert.equal(lambdaCalls[0].FunctionName, 'verifiai-private-health');
+  assert.match(new TextDecoder().decode(lambdaCalls[0].Payload), /10\.0\.9\.25:3000\/health/);
+});
