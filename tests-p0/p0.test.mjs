@@ -56,7 +56,10 @@ test('public site exposes the complete flagship story with live audit CTAs', asy
   assert.match(html, /data-audit-trigger/);
   assert.match(js, /openDrawer/);
   assert.match(js, /runFlagshipAudit/);
-  assert.match(js, /\/api\/demo\/flagship/);
+  assert.match(js, /\/api\/demo\/deep-audit/);
+  assert.match(html, /deployedUrlInput/);
+  assert.match(html, /installableAppInput/);
+  assert.match(html, /tempTokenInput/);
   assert.match(js, /runResult/);
   assert.match(js, /FAILED/);
   assert.match(js, /VERIFIED/);
