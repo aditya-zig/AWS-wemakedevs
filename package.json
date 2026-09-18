@@ -15,7 +15,8 @@
     "start:sandbox": "node services/sandbox/server.mjs",
     "start:web": "node scripts/serve-web.mjs",
     "agentcore:worker": "node dist/services/agent-runtime/worker-server.js",
-    "verify:agentcore": "npm run build && node scripts/verify-agentcore-worker.mjs"
+    "verify:agentcore": "npm run build && node scripts/verify-agentcore-worker.mjs",
+    "verify:local-worker": "npm run build && node scripts/verify-local-worker.mjs"
   },
   "devDependencies": {
     "typescript": "^5.8.3"
