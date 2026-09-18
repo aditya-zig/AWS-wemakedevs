@@ -15,8 +15,8 @@ test('public site contains the complete VERIFIAI marketing story', () => {
   }
   assert.match(html, /Start Deep Audit/);
   assert.match(html, /Evidence-backed/);
-  assert.match(html, /Is your app actually ready for the real world\?/);
-  assert.match(html, /Your users shouldn't be your first real-world test\./);
+  assert.match(html, /Know if your software actually works\./);
+  assert.match(html, /Your users should not be your first real-world test\./);
 });
 
 test('frontend is wired to the real Deep Audit endpoint and live run state', () => {
