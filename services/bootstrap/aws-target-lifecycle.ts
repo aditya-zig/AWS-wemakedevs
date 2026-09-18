@@ -8,8 +8,11 @@ import {
   ECRClient,
 } from '@aws-sdk/client-ecr';
 import {
+  DeregisterTaskDefinitionCommand,
+  DescribeTaskDefinitionCommand,
   DescribeTasksCommand,
   ECSClient,
+  RegisterTaskDefinitionCommand,
   RunTaskCommand,
   StopTaskCommand,
 } from '@aws-sdk/client-ecs';
@@ -49,6 +52,7 @@ export interface AwsTargetHandle {
   imageUri: string;
   imageDigest: string;
   taskArn: string;
+  taskDefinitionArn: string;
   targetUrl: string;
   healthUrl: string;
   launchedAt: string;
@@ -171,9 +175,36 @@ export class AwsTargetLifecycle {
     const imageDigest = image?.imageDetails?.[0]?.imageDigest;
     if (!imageDigest) throw new AwsTargetLifecycleError('image', 'ECR image was not found after a successful CodeBuild');
 
+    const base = await this.ecs.send(new DescribeTaskDefinitionCommand({ taskDefinition: this.config.taskDefinition }));
+    const baseTask = base?.taskDefinition;
+    if (!baseTask) throw new AwsTargetLifecycleError('launch', 'Base ECS task definition could not be loaded');
+    const containers = (baseTask.containerDefinitions ?? []).map((container: any) =>
+      container.name === this.config.containerName ? { ...container, image: imageUri } : container
+    );
+    if (!containers.some((container: any) => container.name === this.config.containerName && container.image === imageUri)) {
+      throw new AwsTargetLifecycleError('launch', `Container ${this.config.containerName} was not found in the base task definition`);
+    }
+    const registered = await this.ecs.send(new RegisterTaskDefinitionCommand({
+      family: baseTask.family ?? 'verifiai-target',
+      taskRoleArn: baseTask.taskRoleArn,
+      executionRoleArn: baseTask.executionRoleArn,
+      networkMode: baseTask.networkMode,
+      containerDefinitions: containers,
+      volumes: baseTask.volumes,
+      placementConstraints: baseTask.placementConstraints,
+      requiresCompatibilities: baseTask.requiresCompatibilities,
+      cpu: baseTask.cpu,
+      memory: baseTask.memory,
+      runtimePlatform: baseTask.runtimePlatform,
+      ephemeralStorage: baseTask.ephemeralStorage,
+      proxyConfiguration: baseTask.proxyConfiguration,
+    }));
+    const taskDefinitionArn = registered?.taskDefinition?.taskDefinitionArn;
+    if (!taskDefinitionArn) throw new AwsTargetLifecycleError('launch', 'ECS did not return the ephemeral target task definition ARN');
+
     const launched = await this.ecs.send(new RunTaskCommand({
       cluster: this.config.ecsCluster,
-      taskDefinition: this.config.taskDefinition,
+      taskDefinition: taskDefinitionArn,
       launchType: 'FARGATE',
       count: 1,
       networkConfiguration: {
@@ -182,12 +213,6 @@ export class AwsTargetLifecycle {
           securityGroups: this.config.securityGroupIds,
           assignPublicIp: this.config.assignPublicIp ? 'ENABLED' : 'DISABLED',
         },
-      },
-      overrides: {
-        containerOverrides: [{
-          name: this.config.containerName,
-          environment: [{ name: 'VERIFIAI_TARGET_IMAGE_URI', value: imageUri }],
-        }],
       },
       startedBy: 'verifiai',
       tags: [{ key: 'verifiai:managed', value: 'true' }],
@@ -230,6 +255,7 @@ export class AwsTargetLifecycle {
               imageUri,
               imageDigest,
               taskArn,
+              taskDefinitionArn,
               targetUrl,
               healthUrl,
               launchedAt: this.now(),
@@ -243,12 +269,24 @@ export class AwsTargetLifecycle {
       throw new AwsTargetLifecycleError('health', `Fargate target did not pass health check: ${lastHealth}`);
     } catch (error) {
       try { await this.stopTask(taskArn, 'A05 startup failure cleanup'); } catch {}
+      try { await this.deregisterTaskDefinition(taskDefinitionArn); } catch {}
       throw error;
     }
   }
 
-  async stop(handle: Pick<AwsTargetHandle, 'taskArn'>): Promise<void> {
-    await this.stopTask(handle.taskArn, 'VERIFIAI audit target teardown');
+  async stop(handle: Pick<AwsTargetHandle, 'taskArn' | 'taskDefinitionArn'>): Promise<void> {
+    let failure: unknown;
+    try { await this.stopTask(handle.taskArn, 'VERIFIAI audit target teardown'); } catch (error) { failure = error; }
+    try { await this.deregisterTaskDefinition(handle.taskDefinitionArn); } catch (error) { failure ??= error; }
+    if (failure) throw failure;
+  }
+
+  private async deregisterTaskDefinition(taskDefinitionArn: string): Promise<void> {
+    try {
+      await this.ecs.send(new DeregisterTaskDefinitionCommand({ taskDefinition: taskDefinitionArn }));
+    } catch (error: any) {
+      throw new AwsTargetLifecycleError('teardown', `Failed to deregister target task definition: ${String(error?.message ?? error)}`);
+    }
   }
 
   private async stopTask(taskArn: string, reason: string): Promise<void> {
