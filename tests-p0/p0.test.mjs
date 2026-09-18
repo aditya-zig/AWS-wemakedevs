@@ -56,7 +56,9 @@ test('public site exposes the complete Deep Audit story with live audit CTAs', a
   assert.match(html, /data-audit-trigger/);
   assert.match(js, /openDrawer/);
   assert.match(js, /runFlagshipAudit/);
-  assert.match(js, /\/api\/demo\/deep-audit/);
+  assert.match(js, /\/api\/audits/);
+  assert.match(js, /fetchSwarm/);
+  assert.match(js, /applySwarm/);
   assert.match(html, /deployedUrlInput/);
   assert.match(html, /installableAppInput/);
   assert.match(html, /tempTokenInput/);
