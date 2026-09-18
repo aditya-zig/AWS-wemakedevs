@@ -20,11 +20,14 @@ test('public site contains the complete VERIFIAI marketing story', () => {
 });
 
 test('frontend is wired to the real Deep Audit endpoint and live run state', () => {
-  assert.match(js, /\/api\/demo\/deep-audit/);
-  assert.match(js, /pollLiveRun/);
+  assert.match(js, /\/api\/audits/);
+  assert.match(js, /fetchSwarm/);
+  assert.match(js, /applySwarm/);
+  assert.match(js, /\/swarm/);
+  assert.match(js, /\/steer/);
   assert.match(js, /runFlagshipAudit/);
   assert.match(js, /runResult/);
-  assert.match(js, /fixDiff/);
+  assert.match(js, /REAL SWARM/);
 });
 
 test('motion system includes scroll, connector, counter, typing, sticky and reduced-motion behavior', () => {
