@@ -221,6 +221,7 @@ export class AwsTargetLifecycle {
     const taskArn = launched?.tasks?.[0]?.taskArn;
     const failure = launched?.failures?.[0];
     if (!taskArn) {
+      try { await this.deregisterTaskDefinition(taskDefinitionArn); } catch {}
       throw new AwsTargetLifecycleError('launch', `ECS RunTask failed${failure?.reason ? `: ${failure.reason}` : ''}`, failure);
     }
 
