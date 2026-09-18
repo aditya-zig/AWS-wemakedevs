@@ -39,7 +39,7 @@ async def run_agent(body):
     model = str(body.get("model") or os.environ.get("VERIFIAI_CUA_MODEL") or "openai/gpt-5.4-mini")
     provider = str(body.get("provider") or os.environ.get("VERIFIAI_CUA_PROVIDER") or "docker")
     try:
-        budget_usd = min(float(body.get("budgetUsd") or 0.25), 1.0)
+        budget_usd = max(0.01, min(float(body.get("budgetUsd") or 0.25), 1.0))
     except (TypeError, ValueError):
         budget_usd = 0.25
     container_name = f"verifiai-cua-{run_id[:24]}".replace("_", "-")
@@ -100,14 +100,27 @@ async def run_agent(body):
             responses.append({"screenshot_error": str(error)})
 
     final_response = None
+    completed = False
     for output_item in reversed(responses):
-        if isinstance(output_item, dict) and output_item.get("type") == "message":
-            content = output_item.get("content", [])
+        if not isinstance(output_item, dict):
+            continue
+        if output_item.get("role") == "assistant":
+            completed = True
+        if output_item.get("type") != "message":
+            continue
+        content = output_item.get("content", [])
+        if isinstance(content, str):
+            text = content.strip()
+            if text:
+                final_response = text[:5000]
+                if output_item.get("role") == "assistant":
+                    break
+        elif isinstance(content, list):
             texts = [part.get("text", "") for part in content if isinstance(part, dict) and part.get("text")]
             if texts:
                 final_response = "\n".join(texts)[:5000]
-                break
-    completed = len(responses) > 0
+                if output_item.get("role") == "assistant":
+                    break
     return {
         "ok": True,
         "completed": completed,
