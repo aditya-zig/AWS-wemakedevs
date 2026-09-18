@@ -1,0 +1,90 @@
+name: Deploy and prove AgentCore worker
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy-and-prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-west-2' }}
+      VERIFIAI_TARGET_STACK: ${{ vars.VERIFIAI_TARGET_STACK || 'verifiai-real-target' }}
+      VERIFIAI_AGENTCORE_STACK: ${{ vars.VERIFIAI_AGENTCORE_STACK || 'verifiai-agentcore' }}
+      VERIFIAI_WORKER_ECR_REPOSITORY: ${{ vars.VERIFIAI_WORKER_ECR_REPOSITORY || 'verifiai-agentcore-worker' }}
+      VERIFIAI_MODEL_SECRET_ARN: ${{ vars.VERIFIAI_MODEL_SECRET_ARN }}
+      VERIFIAI_MODEL_SECRET_FIELD: ${{ vars.VERIFIAI_MODEL_SECRET_FIELD }}
+      VERIFIAI_AGENTCORE_MODEL_PROFILE: ${{ vars.VERIFIAI_AGENTCORE_MODEL_PROFILE }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in AWS_ROLE_ARN VERIFIAI_MODEL_SECRET_ARN VERIFIAI_AGENTCORE_MODEL_PROFILE; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing required configuration: $name"
+              exit 1
+            fi
+          done
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: docker/setup-buildx-action@v3
+      - uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Resolve target-network outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          auditor_sg="$(aws cloudformation describe-stacks --stack-name "$VERIFIAI_TARGET_STACK" --query "Stacks[0].Outputs[?OutputKey=='AuditorSecurityGroupId'].OutputValue | [0]" --output text)"
+          subnets="$(aws cloudformation describe-stacks --stack-name "$VERIFIAI_TARGET_STACK" --query "Stacks[0].Parameters[?ParameterKey=='TargetSubnetIds'].ParameterValue | [0]" --output text)"
+          test -n "$auditor_sg" && test "$auditor_sg" != "None"
+          test -n "$subnets" && test "$subnets" != "None"
+          echo "VERIFIAI_AUDITOR_SECURITY_GROUP=$auditor_sg" >> "$GITHUB_ENV"
+          echo "VERIFIAI_WORKER_SUBNET_IDS=$subnets" >> "$GITHUB_ENV"
+
+      - name: Ensure worker ECR repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws ecr describe-repositories --repository-names "$VERIFIAI_WORKER_ECR_REPOSITORY" >/dev/null 2>&1 ||             aws ecr create-repository --repository-name "$VERIFIAI_WORKER_ECR_REPOSITORY" --image-scanning-configuration scanOnPush=true >/dev/null
+          uri="$(aws ecr describe-repositories --repository-names "$VERIFIAI_WORKER_ECR_REPOSITORY" --query 'repositories[0].repositoryUri' --output text)"
+          arn="$(aws ecr describe-repositories --repository-names "$VERIFIAI_WORKER_ECR_REPOSITORY" --query 'repositories[0].repositoryArn' --output text)"
+          echo "VERIFIAI_WORKER_IMAGE_URI=$uri:$GITHUB_SHA" >> "$GITHUB_ENV"
+          echo "VERIFIAI_WORKER_REPOSITORY_ARN=$arn" >> "$GITHUB_ENV"
+
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
+
+      - name: Build and push ARM64 AgentCore worker
+        run: docker buildx build --platform linux/arm64 -f infra/aws/agentcore-worker.Dockerfile -t "$VERIFIAI_WORKER_IMAGE_URI" --push .
+
+      - name: Deploy AgentCore runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws cloudformation deploy             --stack-name "$VERIFIAI_AGENTCORE_STACK"             --template-file infra/aws/agentcore-runtime.yml             --capabilities CAPABILITY_IAM             --no-fail-on-empty-changeset             --parameter-overrides               WorkerImageUri="$VERIFIAI_WORKER_IMAGE_URI"               WorkerRepositoryArn="$VERIFIAI_WORKER_REPOSITORY_ARN"               ModelSecretArn="$VERIFIAI_MODEL_SECRET_ARN"               ModelSecretField="$VERIFIAI_MODEL_SECRET_FIELD"               WorkerSubnetIds="$VERIFIAI_WORKER_SUBNET_IDS"               WorkerSecurityGroupIds="$VERIFIAI_AUDITOR_SECURITY_GROUP"
+
+      - name: Resolve runtime ARN
+        shell: bash
+        run: |
+          set -euo pipefail
+          runtime_arn="$(aws cloudformation describe-stacks --stack-name "$VERIFIAI_AGENTCORE_STACK" --query "Stacks[0].Outputs[?OutputKey=='AgentRuntimeArn'].OutputValue | [0]" --output text)"
+          test -n "$runtime_arn" && test "$runtime_arn" != "None"
+          echo "VERIFIAI_AGENTCORE_RUNTIME_ARN=$runtime_arn" >> "$GITHUB_ENV"
+
+      - name: Prove launch work evidence teardown
+        run: npm run verify:agentcore
+
+      - name: Acceptance
+        run: echo "A04 LIVE ACCEPTANCE PASSED for $VERIFIAI_AGENTCORE_RUNTIME_ARN"
