@@ -2,9 +2,6 @@ name: AgentCore live acceptance
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - ".github/workflows/agentcore-live-smoke.yml"
 
 permissions:
   contents: read
@@ -30,11 +27,10 @@ jobs:
           [[ -z "$VERIFIAI_AGENTCORE_RUNTIME_ARN" ]] && missing+=("VERIFIAI_AGENTCORE_RUNTIME_ARN")
           [[ -z "$VERIFIAI_AGENTCORE_MODEL_PROFILE" ]] && missing+=("VERIFIAI_AGENTCORE_MODEL_PROFILE")
           if (( ${#missing[@]} )); then
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Live AgentCore acceptance not runnable; missing repository configuration: ${missing[*]}"
-          else
-            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "::error::A04 live acceptance blocked; missing repository configuration: ${missing[*]}"
+            exit 1
           fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
 
       - name: Configure AWS via OIDC
         if: steps.config.outputs.ready == 'true'
@@ -57,11 +53,4 @@ jobs:
         run: npm run verify:agentcore
 
       - name: Acceptance status
-        if: always()
-        shell: bash
-        run: |
-          if [[ "${{ steps.config.outputs.ready }}" != "true" ]]; then
-            echo "A04 LIVE ACCEPTANCE: BLOCKED — AgentCore AWS role/runtime/model profile are not configured."
-          else
-            echo "A04 LIVE ACCEPTANCE: smoke step attempted; inspect its result above."
-          fi
+        run: echo "A04 LIVE ACCEPTANCE: real AgentCore lifecycle completed."
