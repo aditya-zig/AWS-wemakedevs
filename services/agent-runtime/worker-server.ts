@@ -89,6 +89,9 @@ function normalizeReport(brief: AgentWorkerLaunchBrief, value: any, evidence: an
     evidence,
     evidenceRefs,
     followUps,
+    verificationDecision: value?.verificationDecision === 'pass' || value?.verificationDecision === 'fail' || value?.verificationDecision === 'unknown'
+      ? value.verificationDecision
+      : undefined,
     error: typeof value?.error === 'string' ? value.error : undefined,
   };
 }
@@ -127,7 +130,8 @@ export async function executeAgentCoreWorker(
         ? 'You may propose or apply mutations only on an isolated-mutation target and must never verify your own repair.'
         : '',
       'Suspicious or conflicting evidence may request a narrow follow-up investigator/judge/reverification worker.',
-      'Return JSON only with keys: outcome, summary, findings, findingState, followUps.',
+      'Return JSON only with keys: outcome, summary, findings, findingState, followUps, verificationDecision.',
+      'For judge/reverification work, verificationDecision must be pass, fail, or unknown and must be justified by executed evidence.',
       'followUps shape: [{"role":"hypothesis|investigator|judge|reverification","objective":"...","evidenceRefs":[],"reason":"..."}].',
     ].filter(Boolean).join(' '),
   });
