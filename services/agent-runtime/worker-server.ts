@@ -120,8 +120,17 @@ export async function executeAgentCoreWorker(
       'Use only the tools granted to you. Execute relevant checks instead of guessing.',
       'Never invent executed evidence. Confirmed requires executed failing evidence from a tool.',
       'If the assigned lane cannot be executed because a required tool or target is absent, return outcome=incomplete and explain the exact limitation.',
+      brief.role === 'security-secrets'
+        ? 'When strix_scan and zap_scan are granted, execute both real upstream engines for applicable security work. Repository inspection may guide them but does not replace them. If a required engine cannot run, mark that portion incomplete.'
+        : '',
       brief.role === 'browser-app-user'
-        ? 'Generate a bounded diverse set of user personas from the actual product context, use computer_use for real journeys when available, and branch only when observed behavior meaningfully differs.'
+        ? 'When mirofish_personas is granted, run real MiroFish/OASIS first to derive user behavior, then execute representative journeys with computer_use using Browser Use or Cua. Plain HTTP requests do not satisfy browser verification. If the real services cannot run, report incomplete.'
+        : '',
+      brief.role === 'api-chaos'
+        ? 'When granted, use real schemathesis_fuzz for schema-driven API testing and real toxiproxy_fault for applicable network-fault experiments. target_http may inspect/reproduce results but is not a substitute for those engines.'
+        : '',
+      brief.role === 'performance-discovery'
+        ? 'When load_test is granted, execute real Locust or k6 for performance evidence. performance_probe is only a small diagnostic sample and cannot satisfy a load-test objective by itself.'
         : '',
       brief.role === 'judge'
         ? 'Act independently. Resolve conflicting claims only from supplied/executed evidence; do not trust another worker conclusion by itself.'
