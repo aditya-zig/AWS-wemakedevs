@@ -27,6 +27,7 @@ jobs:
       VERIFIAI_ENGINE_STACK: ${{ vars.VERIFIAI_ENGINE_STACK || 'verifiai-external-engines' }}
       VERIFIAI_ENGINE_SUBNET_ID: ${{ vars.VERIFIAI_ENGINE_SUBNET_ID }}
       VERIFIAI_ENGINE_SECRET_ARN: ${{ secrets.VERIFIAI_ENGINE_SECRET_ARN }}
+      VERIFIAI_ENABLE_ENGINE_PUBLIC_HTTPS_EGRESS: ${{ vars.VERIFIAI_ENABLE_ENGINE_PUBLIC_HTTPS_EGRESS || 'false' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -38,6 +39,10 @@ jobs:
           if [ "${{ inputs.action }}" = "deploy" ]; then
             [ -n "${VERIFIAI_ENGINE_SUBNET_ID:-}" ] || { echo "::error::VERIFIAI_ENGINE_SUBNET_ID is required"; exit 1; }
             [ -n "${VERIFIAI_ENGINE_SECRET_ARN:-}" ] || { echo "::error::VERIFIAI_ENGINE_SECRET_ARN is required"; exit 1; }
+            [ "${VERIFIAI_ENABLE_ENGINE_PUBLIC_HTTPS_EGRESS:-false}" = "true" ] || {
+              echo "::error::Engine bootstrap/model APIs require explicit VERIFIAI_ENABLE_ENGINE_PUBLIC_HTTPS_EGRESS=true; broad HTTPS is never implicit."
+              exit 1
+            }
           fi
 
       - name: Configure AWS via OIDC
@@ -88,7 +93,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          aws cloudformation deploy             --stack-name "$VERIFIAI_ENGINE_STACK"             --template-file infra/aws/external-engine-host.yml             --capabilities CAPABILITY_IAM             --no-fail-on-empty-changeset             --parameter-overrides               "VpcId=$VERIFIAI_ENGINE_VPC_ID"               "VpcCidr=$VERIFIAI_ENGINE_VPC_CIDR"               "EngineSubnetId=$VERIFIAI_ENGINE_SUBNET_ID"               "AuditorSecurityGroupId=$VERIFIAI_AUDITOR_SECURITY_GROUP"               "TargetSecurityGroupId=$VERIFIAI_TARGET_SECURITY_GROUP"               "EngineSecretArn=$VERIFIAI_ENGINE_SECRET_ARN"               "SourceCommit=$GITHUB_SHA"
+          aws cloudformation deploy             --stack-name "$VERIFIAI_ENGINE_STACK"             --template-file infra/aws/external-engine-host.yml             --capabilities CAPABILITY_IAM             --no-fail-on-empty-changeset             --parameter-overrides               "VpcId=$VERIFIAI_ENGINE_VPC_ID"               "VpcCidr=$VERIFIAI_ENGINE_VPC_CIDR"               "EngineSubnetId=$VERIFIAI_ENGINE_SUBNET_ID"               "AuditorSecurityGroupId=$VERIFIAI_AUDITOR_SECURITY_GROUP"               "TargetSecurityGroupId=$VERIFIAI_TARGET_SECURITY_GROUP"               "EngineSecretArn=$VERIFIAI_ENGINE_SECRET_ARN"               "SourceCommit=$GITHUB_SHA"               "EnablePublicHttpsEgress=$VERIFIAI_ENABLE_ENGINE_PUBLIC_HTTPS_EGRESS"
 
       - name: Resolve engine host
         if: inputs.action == 'deploy'
