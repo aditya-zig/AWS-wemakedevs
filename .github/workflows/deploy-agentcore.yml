@@ -20,6 +20,11 @@ jobs:
       VERIFIAI_MODEL_SECRET_ARN: ${{ vars.VERIFIAI_MODEL_SECRET_ARN }}
       VERIFIAI_MODEL_SECRET_FIELD: ${{ vars.VERIFIAI_MODEL_SECRET_FIELD }}
       VERIFIAI_AGENTCORE_MODEL_PROFILE: ${{ vars.VERIFIAI_AGENTCORE_MODEL_PROFILE }}
+      VERIFIAI_EXTERNAL_ENGINE_URL: ${{ vars.VERIFIAI_EXTERNAL_ENGINE_URL }}
+      VERIFIAI_BROWSER_USE_URL: ${{ vars.VERIFIAI_BROWSER_USE_URL }}
+      VERIFIAI_CUA_URL: ${{ vars.VERIFIAI_CUA_URL }}
+      VERIFIAI_COMPUTER_USE_URL: ${{ vars.VERIFIAI_COMPUTER_USE_URL }}
+      VERIFIAI_MUTATION_SERVICE_URL: ${{ vars.VERIFIAI_MUTATION_SERVICE_URL }}
     steps:
       - uses: actions/checkout@v4
       - name: Preflight
@@ -73,7 +78,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          aws cloudformation deploy             --stack-name "$VERIFIAI_AGENTCORE_STACK"             --template-file infra/aws/agentcore-runtime.yml             --capabilities CAPABILITY_IAM             --no-fail-on-empty-changeset             --parameter-overrides               WorkerImageUri="$VERIFIAI_WORKER_IMAGE_URI"               WorkerRepositoryArn="$VERIFIAI_WORKER_REPOSITORY_ARN"               ModelSecretArn="$VERIFIAI_MODEL_SECRET_ARN"               ModelSecretField="$VERIFIAI_MODEL_SECRET_FIELD"               WorkerSubnetIds="$VERIFIAI_WORKER_SUBNET_IDS"               WorkerSecurityGroupIds="$VERIFIAI_AUDITOR_SECURITY_GROUP"
+          params=(
+            "WorkerImageUri=$VERIFIAI_WORKER_IMAGE_URI"
+            "WorkerRepositoryArn=$VERIFIAI_WORKER_REPOSITORY_ARN"
+            "ModelSecretArn=$VERIFIAI_MODEL_SECRET_ARN"
+            "ModelSecretField=$VERIFIAI_MODEL_SECRET_FIELD"
+            "WorkerSubnetIds=$VERIFIAI_WORKER_SUBNET_IDS"
+            "WorkerSecurityGroupIds=$VERIFIAI_AUDITOR_SECURITY_GROUP"
+          )
+          [[ -n "${VERIFIAI_EXTERNAL_ENGINE_URL:-}" ]] && params+=("ExternalEngineUrl=$VERIFIAI_EXTERNAL_ENGINE_URL")
+          [[ -n "${VERIFIAI_BROWSER_USE_URL:-}" ]] && params+=("BrowserUseUrl=$VERIFIAI_BROWSER_USE_URL")
+          [[ -n "${VERIFIAI_CUA_URL:-}" ]] && params+=("CuaUrl=$VERIFIAI_CUA_URL")
+          [[ -n "${VERIFIAI_COMPUTER_USE_URL:-}" ]] && params+=("ComputerUseUrl=$VERIFIAI_COMPUTER_USE_URL")
+          [[ -n "${VERIFIAI_MUTATION_SERVICE_URL:-}" ]] && params+=("MutationServiceUrl=$VERIFIAI_MUTATION_SERVICE_URL")
+          aws cloudformation deploy \
+            --stack-name "$VERIFIAI_AGENTCORE_STACK" \
+            --template-file infra/aws/agentcore-runtime.yml \
+            --capabilities CAPABILITY_IAM \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides "${params[@]}"
 
       - name: Resolve runtime ARN
         shell: bash
