@@ -46,11 +46,8 @@ html { scroll-behavior: smooth; }
 body {
   margin: 0;
   background:
-    radial-gradient(circle at 12% 8%, rgba(255,175,110,.34), transparent 30%),
-    radial-gradient(circle at 88% 18%, rgba(255,118,144,.22), transparent 34%),
-    radial-gradient(circle at 52% 88%, rgba(255,205,125,.24), transparent 38%),
-    linear-gradient(135deg, #fff8ee 0%, #ffd9c8 30%, #ffc9bb 56%, #ffe5c6 80%, #fffaf5 100%);
-  background-attachment: fixed;
+    radial-gradient(circle at 12% 8%, rgba(255,79,0,.07), transparent 28%),
+    linear-gradient(180deg, #fffdf9 0%, var(--bg) 46%, #fff 100%);
   color: var(--text);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 15px;
@@ -437,7 +434,7 @@ h3 { font-size: 17px; line-height: 1.25; letter-spacing: -.01em; margin-bottom: 
 .hero-proof span { display:inline-flex; align-items:center; gap:7px; }
 .hero-proof i { width:7px; height:7px; border-radius:50%; background:var(--verified); }
 
-.particle-band { width:min(980px,100%); height:260px; margin:34px auto 0; border-radius:22px; overflow:hidden; position:relative; background:radial-gradient(circle at 30% 22%, rgba(255,165,105,.26), transparent 34%), radial-gradient(circle at 78% 34%, rgba(255,115,145,.18), transparent 32%), linear-gradient(135deg,#fff5ea 0%,#ffd8c6 48%,#ffe4c8 100%); border:1px solid rgba(196,142,118,.28); box-shadow:0 24px 58px rgba(96,55,39,.11); }
+.particle-band { width:min(980px,100%); height:260px; margin:34px auto 0; border-radius:22px; overflow:hidden; position:relative; background:radial-gradient(circle at 50% 35%, rgba(255,79,0,.08), transparent 30%), linear-gradient(135deg,#f7f9ff 0%,#fffaf5 48%,#f2f6ff 100%); border:1px solid #d9dfe9; box-shadow:0 24px 58px rgba(45,32,25,.10); }
 .particle-band::after { content:'Hover over VERIFIAI'; position:absolute; left:50%; bottom:18px; transform:translateX(-50%); color:#7a6f68; font-size:11px; z-index:2; pointer-events:none; white-space:nowrap; }
 .particle-text { position:relative; display:block; width:100%; height:100%; min-height:240px; overflow:hidden; touch-action:none; isolation:isolate; }
 .particle-text__canvas { position:absolute; inset:0; display:block; width:100%; height:100%; }
