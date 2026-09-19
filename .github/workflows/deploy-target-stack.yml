@@ -13,7 +13,7 @@ jobs:
     timeout-minutes: 20
     env:
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
-      AWS_REGION: ${{ vars.AWS_REGION || 'us-west-2' }}
+      AWS_REGION: ${{ vars.AWS_REGION || 'ap-south-1' }}
       VERIFIAI_VPC_ID: ${{ vars.VERIFIAI_VPC_ID }}
       VERIFIAI_VPC_CIDR: ${{ vars.VERIFIAI_VPC_CIDR || '10.0.0.0/16' }}
       VERIFIAI_TARGET_SUBNET_IDS: ${{ vars.VERIFIAI_TARGET_SUBNET_IDS }}
