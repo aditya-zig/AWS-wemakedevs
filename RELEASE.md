@@ -1,4 +1,4 @@
-# VERIFIAI Hackathon Release
+# VERIFAI Hackathon Release
 
 Release state: integrated directly on `main`.
 
