@@ -5,7 +5,7 @@ import { summarizeExperimentStatuses, type Evidence, type EvidenceInput, type Ex
  * Legacy deterministic experiment runner.
  *
  * It remains intentionally available as replayable regression/evidence
- * infrastructure. It is not the VERIFIAI multi-agent orchestrator and must not
+ * infrastructure. It is not the VERIFAI multi-agent orchestrator and must not
  * be surfaced as an autonomous agent.
  */
 export const DETERMINISTIC_RUNNER_EXECUTION_CLASS = 'deterministic-tool' as const;
