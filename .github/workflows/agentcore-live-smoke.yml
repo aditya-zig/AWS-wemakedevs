@@ -53,4 +53,5 @@ jobs:
         run: npm run verify:agentcore
 
       - name: Acceptance status
-        run: echo "A04 LIVE ACCEPTANCE: real AgentCore lifecycle completed."
+        run: |
+          echo "A04 LIVE ACCEPTANCE: real AgentCore lifecycle completed."
