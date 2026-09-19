@@ -12,6 +12,15 @@ on:
           - owasp-juice-shop
           - docker-welcome
           - traefik-whoami
+          - all
+      repeat_count:
+        description: Clean repetitions per selected repository
+        required: true
+        default: '1'
+        type: choice
+        options:
+          - '1'
+          - '2'
 
 permissions:
   id-token: write
@@ -20,7 +29,7 @@ permissions:
 jobs:
   real-repo-e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 180
     env:
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
       AWS_REGION: ${{ vars.AWS_REGION || 'us-west-2' }}
@@ -105,12 +114,32 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npm run build
 
-      - name: Run real repository E2E
-        run: node scripts/real-repo-e2e.mjs "${{ inputs.repository }}"
+      - name: Run bounded real-repository demo set
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.repository }}" = "all" ]; then
+            repositories=(owasp-juice-shop docker-welcome traefik-whoami)
+          else
+            repositories=("${{ inputs.repository }}")
+          fi
+          repeats="${{ inputs.repeat_count }}"
+          if [ "$repeats" -lt 1 ] || [ "$repeats" -gt 2 ]; then
+            echo "::error::repeat_count must stay between 1 and 2"
+            exit 1
+          fi
+          for repository in "${repositories[@]}"; do
+            for attempt in $(seq 1 "$repeats"); do
+              echo "::group::A12 $repository clean run $attempt/$repeats"
+              VERIFIAI_E2E_OUTPUT_DIR="artifacts/real-repo-e2e/$repository/run-$attempt" \
+                node scripts/real-repo-e2e.mjs "$repository"
+              echo "::endgroup::"
+            done
+          done
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: real-repo-e2e-${{ inputs.repository }}
+          name: real-repo-e2e-${{ inputs.repository }}-x${{ inputs.repeat_count }}
           path: artifacts/real-repo-e2e/
           if-no-files-found: warn
