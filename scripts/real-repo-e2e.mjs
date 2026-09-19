@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { AwsTargetLifecycle } from '../dist/services/bootstrap/aws-target-lifecycle.js';
 import { LiveAuditService } from '../dist/apps/api/swarms/service.js';
+import { assessRealRepoAcceptance } from '../dist/services/release/real-repo-acceptance.js';
 
 function required(name) {
   const value = process.env[name];
@@ -76,6 +77,7 @@ async function main() {
     architecture: 'Strands -> AgentCore workers -> CodeBuild/ECR/Fargate target',
     target: null,
     audit: null,
+    acceptance: null,
     cleanup: { attempted: false, succeeded: false },
   };
 
@@ -129,11 +131,12 @@ async function main() {
     if (current.error) throw new Error(current.error);
     record.audit = current;
 
-    if (!current.result || current.result.outcome === 'failed') {
-      throw new Error(`Real-repo audit did not complete successfully: ${current.result?.outcome || 'missing result'}`);
+    if (!current.result) {
+      throw new Error('Real-repo audit did not return a final result');
     }
-    if ((current.state.evidence?.length || 0) === 0) {
-      throw new Error('Real-repo audit returned zero executed evidence items');
+    record.acceptance = assessRealRepoAcceptance(current.result);
+    if (!record.acceptance.ok) {
+      throw new Error(`Real-repo Deep Audit acceptance failed: ${record.acceptance.failures.join('; ')}`);
     }
   } finally {
     if (target) {
@@ -159,6 +162,7 @@ async function main() {
       evidence: record.audit?.state?.evidence?.length || 0,
       workers: record.audit?.state?.plan?.tasks?.length || 0,
       spend: record.audit?.state?.guardrails?.estimatedSpendUsd || 0,
+      acceptance: record.acceptance,
       cleanup: record.cleanup,
     }, null, 2));
   }

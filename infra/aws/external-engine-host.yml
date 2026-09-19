@@ -1,0 +1,238 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: VERIFIAI ephemeral real external-engine host for AgentCore workers
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  VpcCidr:
+    Type: String
+    Default: 10.0.0.0/16
+  EngineSubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Public subnet with internet routing; the instance receives a public IP but no public ingress.
+  AuditorSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+  TargetSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+  EngineSecretArn:
+    Type: String
+    Description: Secrets Manager JSON object containing only engine/model runtime secrets.
+  SourceRepositoryUrl:
+    Type: String
+    Default: https://github.com/aditya-zig/AWS-wemakedevs.git
+  SourceCommit:
+    Type: String
+    Description: Exact VERIFIAI commit to clone and run.
+  InstanceType:
+    Type: String
+    Default: t3.xlarge
+    AllowedValues: [t3.xlarge, m6i.xlarge]
+  MaxLifetimeMinutes:
+    Type: Number
+    Default: 240
+    MinValue: 60
+    MaxValue: 480
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+  EnablePublicHttpsEgress:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: Explicit bootstrap/model-API escape hatch. Broad HTTPS is never enabled implicitly.
+
+Conditions:
+  PublicHttpsEgressEnabled: !Equals [!Ref EnablePublicHttpsEgress, 'true']
+
+Resources:
+  EngineHostSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: VERIFIAI real external engines reachable only by AgentCore/auditor workers
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - !If
+          - PublicHttpsEgressEnabled
+          - IpProtocol: tcp
+            FromPort: 443
+            ToPort: 443
+            CidrIp: 0.0.0.0/0
+            Description: Explicitly enabled HTTPS for pinned source/image pulls and model APIs
+          - !Ref AWS::NoValue
+        - IpProtocol: udp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: !Ref VpcCidr
+          Description: VPC DNS
+        - IpProtocol: tcp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: !Ref VpcCidr
+          Description: VPC DNS fallback
+
+  EngineIngressExternal:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref EngineHostSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8789
+      ToPort: 8789
+      SourceSecurityGroupId: !Ref AuditorSecurityGroupId
+
+  EngineIngressCuaBrowser:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref EngineHostSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8791
+      ToPort: 8792
+      SourceSecurityGroupId: !Ref AuditorSecurityGroupId
+
+  AuditorEgressToExternal:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref AuditorSecurityGroupId
+      IpProtocol: tcp
+      FromPort: 8789
+      ToPort: 8789
+      DestinationSecurityGroupId: !Ref EngineHostSecurityGroup
+
+  AuditorEgressToCuaBrowser:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref AuditorSecurityGroupId
+      IpProtocol: tcp
+      FromPort: 8791
+      ToPort: 8792
+      DestinationSecurityGroupId: !Ref EngineHostSecurityGroup
+
+  EngineEgressToTarget:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref EngineHostSecurityGroup
+      IpProtocol: tcp
+      FromPort: 1
+      ToPort: 65535
+      DestinationSecurityGroupId: !Ref TargetSecurityGroupId
+
+  TargetIngressFromEngineHost:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref TargetSecurityGroupId
+      IpProtocol: tcp
+      FromPort: 1
+      ToPort: 65535
+      SourceSecurityGroupId: !Ref EngineHostSecurityGroup
+
+  EngineHostRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: engine-runtime-secret
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref EngineSecretArn
+
+  EngineHostProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref EngineHostRole
+
+  EngineHost:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref LatestAmiId
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: !Ref EngineHostProfile
+      NetworkInterfaces:
+        - DeviceIndex: '0'
+          AssociatePublicIpAddress: true
+          DeleteOnTermination: true
+          SubnetId: !Ref EngineSubnetId
+          GroupSet:
+            - !Ref EngineHostSecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeType: gp3
+            VolumeSize: 50
+            Encrypted: true
+            DeleteOnTermination: true
+      Tags:
+        - Key: Name
+          Value: !Sub verifiai-engine-host-${AWS::StackName}
+        - Key: verifiai:managed
+          Value: 'true'
+        - Key: verifiai:component
+          Value: external-engines
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euxo pipefail
+          exec > >(tee /var/log/verifiai-engine-bootstrap.log | logger -t verifiai-engine-bootstrap -s 2>/dev/console) 2>&1
+
+          REGION='${AWS::Region}'
+          SECRET_ARN='${EngineSecretArn}'
+          SOURCE_REPO='${SourceRepositoryUrl}'
+          SOURCE_COMMIT='${SourceCommit}'
+          COMPOSE_VERSION='5.5.1'
+          COMPOSE_SHA256='db1889184726840f75c4f9c001048430d4f25b3be3cb084d3ddd762bc0aed576'
+
+          dnf install -y docker git jq curl
+          systemctl enable --now docker
+
+          mkdir -p /usr/local/lib/docker/cli-plugins
+          curl -fsSL "https://github.com/docker/compose/releases/download/v$COMPOSE_VERSION/docker-compose-linux-x86_64" \
+            -o /usr/local/lib/docker/cli-plugins/docker-compose
+          echo "$COMPOSE_SHA256  /usr/local/lib/docker/cli-plugins/docker-compose" | sha256sum -c -
+          chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+          docker compose version
+
+          rm -rf /opt/verifiai
+          git clone "$SOURCE_REPO" /opt/verifiai
+          git -C /opt/verifiai fetch --depth=1 origin "$SOURCE_COMMIT"
+          git -C /opt/verifiai checkout --detach "$SOURCE_COMMIT"
+          test "$(git -C /opt/verifiai rev-parse HEAD)" = "$SOURCE_COMMIT"
+
+          aws secretsmanager get-secret-value \
+            --region "$REGION" \
+            --secret-id "$SECRET_ARN" \
+            --query SecretString \
+            --output text > /run/verifiai-engine-secret.json
+          jq -r 'to_entries[] | "\(.key)=\(.value|tostring|@json)"' /run/verifiai-engine-secret.json > /opt/verifiai/.engine.env
+          printf '%s\n' 'VERIFIAI_ENGINE_BIND=0.0.0.0' >> /opt/verifiai/.engine.env
+          chmod 600 /opt/verifiai/.engine.env
+          rm -f /run/verifiai-engine-secret.json
+
+          cd /opt/verifiai
+          docker compose --env-file .engine.env -f docker-compose.external.yml up --build -d
+          docker compose --env-file .engine.env -f docker-compose.external.yml ps
+
+          shutdown -h +${MaxLifetimeMinutes}
+
+Outputs:
+  EngineInstanceId:
+    Value: !Ref EngineHost
+  EnginePrivateIp:
+    Value: !GetAtt EngineHost.PrivateIp
+  EngineSecurityGroupId:
+    Value: !Ref EngineHostSecurityGroup
+  ExternalEngineUrl:
+    Value: !Sub http://${EngineHost.PrivateIp}:8789
+  CuaUrl:
+    Value: !Sub http://${EngineHost.PrivateIp}:8791
+  BrowserUseUrl:
+    Value: !Sub http://${EngineHost.PrivateIp}:8792

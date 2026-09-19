@@ -37,6 +37,9 @@ interface InternalRecord {
   auditId: string;
   mode: 'local' | 'agentcore';
   startedAt: string;
+  repository: AuditRepositoryFacts;
+  modelProfileId: string;
+  networkAllowlist: string[];
   orchestrator: EphemeralStrandsOrchestrator;
   result?: AuditRunResult;
   error?: string;
@@ -119,6 +122,9 @@ export class LiveAuditService {
       auditId,
       mode,
       startedAt: this.now(),
+      repository: input.repository,
+      modelProfileId,
+      networkAllowlist: [...policy.networkAllowlist],
       orchestrator,
       run: Promise.resolve(),
     };
@@ -144,6 +150,17 @@ export class LiveAuditService {
   get(auditId: string): LiveAuditRecord | undefined {
     const record = this.records.get(auditId);
     return record ? this.publicRecord(record) : undefined;
+  }
+
+  repairContext(auditId: string): { repository: AuditRepositoryFacts; modelProfileId: string; networkAllowlist: string[]; completed: boolean } | undefined {
+    const record = this.records.get(auditId);
+    if (!record) return undefined;
+    return {
+      repository: record.repository,
+      modelProfileId: record.modelProfileId,
+      networkAllowlist: [...record.networkAllowlist],
+      completed: Boolean(record.result),
+    };
   }
 
   steer(auditId: string, objective: string): LiveAuditRecord {

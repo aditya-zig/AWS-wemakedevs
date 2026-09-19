@@ -383,3 +383,48 @@ export class TargetHealthProbe implements ChangedAppProbe {
     }
   }
 }
+
+
+export class HttpRegressionRunner implements RegressionRunner {
+  constructor(
+    private readonly endpoint: string,
+    private readonly token?: string,
+    private readonly fetchFn: typeof fetch = fetch,
+  ) {
+    if (!endpoint) throw new Error('Regression runner endpoint is required; synthetic regression evidence is not allowed.');
+  }
+
+  async run(input: {
+    auditId: string;
+    target: AuditTargetRef;
+    source: RepairSource;
+  }): Promise<RegressionResult> {
+    const response = await this.fetchFn(this.endpoint, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(this.token ? { authorization: `Bearer ${this.token}` } : {}),
+      },
+      body: JSON.stringify(input),
+      signal: AbortSignal.timeout(180_000),
+    });
+    if (!response.ok) throw new Error(`regression runner returned HTTP ${response.status}`);
+    const output: any = await response.json();
+    const evidence = Array.isArray(output?.evidence) ? output.evidence : [];
+    const evidenceRefs = Array.isArray(output?.evidenceRefs)
+      ? output.evidenceRefs.filter((value: unknown): value is string => typeof value === 'string')
+      : [];
+    if (typeof output?.passed !== 'boolean' || typeof output?.adversarialPassed !== 'boolean') {
+      throw new Error('regression runner did not return boolean pass decisions');
+    }
+    if ((output.passed || output.adversarialPassed) && !evidence.some((item: any) => item?.executed === true)) {
+      throw new Error('regression runner claimed pass without executed evidence');
+    }
+    return {
+      passed: output.passed,
+      adversarialPassed: output.adversarialPassed,
+      evidence,
+      evidenceRefs,
+    };
+  }
+}

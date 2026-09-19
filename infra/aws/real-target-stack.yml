@@ -12,6 +12,14 @@ Parameters:
   BootstrapImageUri:
     Type: String
     Default: public.ecr.aws/nginx/nginx:stable-alpine
+  EnablePublicHttpsEgress:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: Explicit escape hatch for public HTTPS egress. Keep false unless the selected VPC lacks required private endpoints.
+
+Conditions:
+  PublicHttpsEgressEnabled: !Equals [!Ref EnablePublicHttpsEgress, 'true']
 
 Resources:
   TargetRepository:
@@ -42,11 +50,14 @@ Resources:
       GroupDescription: VERIFAI AgentCore workers and private health probes
       VpcId: !Ref VpcId
       SecurityGroupEgress:
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          CidrIp: 0.0.0.0/0
-          Description: HTTPS to approved model/GitHub hosts; application allowlist is enforced by workers
+        - !If
+          - PublicHttpsEgressEnabled
+          - IpProtocol: tcp
+            FromPort: 443
+            ToPort: 443
+            CidrIp: 0.0.0.0/0
+            Description: Explicitly enabled public HTTPS escape hatch; worker URL policy still applies
+          - !Ref AWS::NoValue
         - IpProtocol: udp
           FromPort: 53
           ToPort: 53
@@ -64,11 +75,14 @@ Resources:
       GroupDescription: Private VERIFAI audit targets
       VpcId: !Ref VpcId
       SecurityGroupEgress:
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          CidrIp: 0.0.0.0/0
-          Description: Image/runtime HTTPS only
+        - !If
+          - PublicHttpsEgressEnabled
+          - IpProtocol: tcp
+            FromPort: 443
+            ToPort: 443
+            CidrIp: 0.0.0.0/0
+            Description: Explicitly enabled target HTTPS escape hatch for image/runtime dependencies
+          - !Ref AWS::NoValue
         - IpProtocol: udp
           FromPort: 53
           ToPort: 53

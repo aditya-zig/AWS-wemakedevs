@@ -1329,9 +1329,9 @@ regressions: 0</code></pre>
       } else if (kind === 'replay-live') {
         state.livePreview = true;
         render();
-        showToast('Live experiment replayed from a deterministic demo state.');
+        showToast('Prototype replay only — this is not verification evidence.');
       } else if (kind === 'create-pr') {
-        showToast('Pull request #82 created from verifiai/fix-payment-timeout.');
+        showToast('Prototype control only — a real PR unlocks only after independent verification.');
       } else if (kind === 'toast') {
         showToast(action.dataset.message || 'Action completed.');
       }

@@ -12,6 +12,15 @@ on:
           - owasp-juice-shop
           - docker-welcome
           - traefik-whoami
+          - all
+      repeat_count:
+        description: Clean repetitions per selected repository
+        required: true
+        default: '1'
+        type: choice
+        options:
+          - '1'
+          - '2'
 
 permissions:
   id-token: write
@@ -20,12 +29,13 @@ permissions:
 jobs:
   real-repo-e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 180
     env:
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
       AWS_REGION: ${{ vars.AWS_REGION || 'us-west-2' }}
       VERIFIAI_TARGET_STACK: ${{ vars.VERIFIAI_TARGET_STACK || 'verifiai-real-target' }}
       VERIFIAI_AGENTCORE_STACK: ${{ vars.VERIFIAI_AGENTCORE_STACK || 'verifiai-agentcore' }}
+      VERIFIAI_ENGINE_STACK: ${{ vars.VERIFIAI_ENGINE_STACK || 'verifiai-external-engines' }}
       VERIFIAI_MODEL_PROVIDER: ${{ vars.VERIFIAI_MODEL_PROVIDER }}
       VERIFIAI_MODEL_ID: ${{ vars.VERIFIAI_MODEL_ID }}
       VERIFIAI_MODEL_BASE_URL: ${{ vars.VERIFIAI_MODEL_BASE_URL }}
@@ -33,6 +43,10 @@ jobs:
       NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
       OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
       VERIFIAI_COMPUTER_USE_URL: ${{ vars.VERIFIAI_COMPUTER_USE_URL }}
+      VERIFIAI_BROWSER_USE_URL: ${{ vars.VERIFIAI_BROWSER_USE_URL }}
+      VERIFIAI_CUA_URL: ${{ vars.VERIFIAI_CUA_URL }}
+      VERIFIAI_EXTERNAL_ENGINE_URL: ${{ vars.VERIFIAI_EXTERNAL_ENGINE_URL }}
+      VERIFIAI_EXTERNAL_ENGINE_TOKEN: ${{ secrets.VERIFIAI_EXTERNAL_ENGINE_TOKEN }}
       VERIFIAI_COMPUTER_USE_TOKEN: ${{ secrets.VERIFIAI_COMPUTER_USE_TOKEN }}
     steps:
       - uses: actions/checkout@v4
@@ -50,6 +64,12 @@ jobs:
               exit 1
             fi
           done
+          case "$VERIFIAI_MODEL_PROVIDER" in
+            openrouter) [ -n "${OPENROUTER_API_KEY:-}" ] || { echo "::error::OPENROUTER_API_KEY is missing"; exit 1; } ;;
+            nvidia) [ -n "${NVIDIA_API_KEY:-}" ] || { echo "::error::NVIDIA_API_KEY is missing"; exit 1; } ;;
+            ollama-cloud) [ -n "${OLLAMA_API_KEY:-}" ] || { echo "::error::OLLAMA_API_KEY is missing"; exit 1; } ;;
+            *) echo "::error::Unsupported VERIFIAI_MODEL_PROVIDER=$VERIFIAI_MODEL_PROVIDER"; exit 1 ;;
+          esac
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -67,6 +87,16 @@ jobs:
             aws cloudformation describe-stacks --stack-name "$VERIFIAI_TARGET_STACK" --query "Stacks[0].Parameters[?ParameterKey=='$1'].ParameterValue | [0]" --output text
           }
           runtime_arn="$(aws cloudformation describe-stacks --stack-name "$VERIFIAI_AGENTCORE_STACK" --query "Stacks[0].Outputs[?OutputKey=='AgentRuntimeArn'].OutputValue | [0]" --output text)"
+          engine_output() {
+            aws cloudformation describe-stacks --stack-name "$VERIFIAI_ENGINE_STACK" --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue | [0]" --output text
+          }
+          external_engine_url="${VERIFIAI_EXTERNAL_ENGINE_URL:-}"
+          cua_url="${VERIFIAI_CUA_URL:-}"
+          browser_url="${VERIFIAI_BROWSER_USE_URL:-}"
+          if [ -z "$external_engine_url" ]; then external_engine_url="$(engine_output ExternalEngineUrl)"; fi
+          if [ -z "$cua_url" ]; then cua_url="$(engine_output CuaUrl)"; fi
+          if [ -z "$browser_url" ]; then browser_url="$(engine_output BrowserUseUrl)"; fi
+
           values=(
             "VERIFIAI_AGENTCORE_RUNTIME_ARN=$runtime_arn"
             "VERIFIAI_CODEBUILD_PROJECT=$(target_output CodeBuildProjectName)"
@@ -78,6 +108,9 @@ jobs:
             "VERIFIAI_TARGET_SUBNET_IDS=$(target_param TargetSubnetIds)"
             "VERIFIAI_TARGET_SECURITY_GROUP_IDS=$(target_output TargetSecurityGroupId)"
             "VERIFIAI_HEALTH_PROBE_FUNCTION=$(target_output HealthProbeFunctionName)"
+            "VERIFIAI_EXTERNAL_ENGINE_URL=$external_engine_url"
+            "VERIFIAI_CUA_URL=$cua_url"
+            "VERIFIAI_BROWSER_USE_URL=$browser_url"
           )
           for item in "${values[@]}"; do
             value="${item#*=}"
@@ -87,16 +120,44 @@ jobs:
             fi
             echo "$item" >> "$GITHUB_ENV"
           done
+          if [ -z "$external_engine_url" ] || [ "$external_engine_url" = "None" ]; then
+            echo "::error::A11 requires the deployed real external-engine host"
+            exit 1
+          fi
+          if { [ -z "$cua_url" ] || [ "$cua_url" = "None" ]; } && { [ -z "$browser_url" ] || [ "$browser_url" = "None" ]; }; then
+            echo "::error::A11 requires a real Cua or Browser Use endpoint"
+            exit 1
+          fi
 
       - run: npm install --no-audit --no-fund
       - run: npm run build
 
-      - name: Run real repository E2E
-        run: node scripts/real-repo-e2e.mjs "${{ inputs.repository }}"
+      - name: Run bounded real-repository demo set
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.repository }}" = "all" ]; then
+            repositories=(owasp-juice-shop docker-welcome traefik-whoami)
+          else
+            repositories=("${{ inputs.repository }}")
+          fi
+          repeats="${{ inputs.repeat_count }}"
+          if [ "$repeats" -lt 1 ] || [ "$repeats" -gt 2 ]; then
+            echo "::error::repeat_count must stay between 1 and 2"
+            exit 1
+          fi
+          for repository in "${repositories[@]}"; do
+            for attempt in $(seq 1 "$repeats"); do
+              echo "::group::A12 $repository clean run $attempt/$repeats"
+              VERIFIAI_E2E_OUTPUT_DIR="artifacts/real-repo-e2e/$repository/run-$attempt" \
+                node scripts/real-repo-e2e.mjs "$repository"
+              echo "::endgroup::"
+            done
+          done
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: real-repo-e2e-${{ inputs.repository }}
+          name: real-repo-e2e-${{ inputs.repository }}-x${{ inputs.repeat_count }}
           path: artifacts/real-repo-e2e/
           if-no-files-found: warn

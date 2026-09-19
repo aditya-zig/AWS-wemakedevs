@@ -46,7 +46,7 @@ services:
       STRIX_LLM: "${STRIX_LLM:-}"
       LLM_API_KEY: "${LLM_API_KEY:-}"
     ports:
-      - "127.0.0.1:8789:8789"
+      - "${VERIFIAI_ENGINE_BIND:-127.0.0.1}:8789:8789"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     extra_hosts:
@@ -69,7 +69,7 @@ services:
       VERIFIAI_BROWSER_USE_MODEL_BASE_URL: "${VERIFIAI_BROWSER_USE_MODEL_BASE_URL:-https://openrouter.ai/api/v1}"
       VERIFIAI_BROWSER_USE_MODEL_API_KEY: "${VERIFIAI_BROWSER_USE_MODEL_API_KEY:-}"
     ports:
-      - "127.0.0.1:8792:8792"
+      - "${VERIFIAI_ENGINE_BIND:-127.0.0.1}:8792:8792"
     shm_size: 1gb
     mem_limit: 2g
     cpus: 2.0
@@ -91,7 +91,7 @@ services:
       VERIFIAI_CUA_MODEL_API_BASE: "${VERIFIAI_CUA_MODEL_API_BASE:-}"
       CUA_API_KEY: "${CUA_API_KEY:-}"
     ports:
-      - "127.0.0.1:8791:8791"
+      - "${VERIFIAI_ENGINE_BIND:-127.0.0.1}:8791:8791"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - cua-artifacts:/artifacts

@@ -22,6 +22,26 @@ Parameters:
     Type: List<AWS::EC2::Subnet::Id>
   WorkerSecurityGroupIds:
     Type: List<AWS::EC2::SecurityGroup::Id>
+  ExternalEngineUrl:
+    Type: String
+    Default: ''
+    Description: Optional private/public URL for the real external-engine service.
+  BrowserUseUrl:
+    Type: String
+    Default: ''
+    Description: Optional real Browser Use runner URL.
+  CuaUrl:
+    Type: String
+    Default: ''
+    Description: Optional real Cua runner URL.
+  ComputerUseUrl:
+    Type: String
+    Default: ''
+    Description: Optional generic computer-use service URL.
+  MutationServiceUrl:
+    Type: String
+    Default: ''
+    Description: Optional isolated repair mutation service URL.
 
 Resources:
   RuntimeExecutionRole:
@@ -83,6 +103,11 @@ Resources:
         AWS_REGION: !Ref AWS::Region
         VERIFIAI_MODEL_SECRET_ID: !Ref ModelSecretArn
         VERIFIAI_MODEL_SECRET_FIELD: !Ref ModelSecretField
+        VERIFIAI_EXTERNAL_ENGINE_URL: !Ref ExternalEngineUrl
+        VERIFIAI_BROWSER_USE_URL: !Ref BrowserUseUrl
+        VERIFIAI_CUA_URL: !Ref CuaUrl
+        VERIFIAI_COMPUTER_USE_URL: !Ref ComputerUseUrl
+        VERIFIAI_MUTATION_SERVICE_URL: !Ref MutationServiceUrl
       LifecycleConfiguration:
         IdleRuntimeSessionTimeout: 300
         MaxLifetime: 1800

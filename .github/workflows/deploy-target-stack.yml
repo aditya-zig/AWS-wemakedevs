@@ -18,6 +18,7 @@ jobs:
       VERIFIAI_VPC_CIDR: ${{ vars.VERIFIAI_VPC_CIDR || '10.0.0.0/16' }}
       VERIFIAI_TARGET_SUBNET_IDS: ${{ vars.VERIFIAI_TARGET_SUBNET_IDS }}
       VERIFIAI_TARGET_STACK: ${{ vars.VERIFIAI_TARGET_STACK || 'verifiai-real-target' }}
+      VERIFIAI_ENABLE_PUBLIC_HTTPS_EGRESS: ${{ vars.VERIFIAI_ENABLE_PUBLIC_HTTPS_EGRESS || 'false' }}
     steps:
       - uses: actions/checkout@v4
       - name: Preflight
@@ -38,6 +39,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          aws cloudformation deploy             --stack-name "$VERIFIAI_TARGET_STACK"             --template-file infra/aws/real-target-stack.yml             --capabilities CAPABILITY_IAM             --no-fail-on-empty-changeset             --parameter-overrides               VpcId="$VERIFIAI_VPC_ID"               VpcCidr="$VERIFIAI_VPC_CIDR"               TargetSubnetIds="$VERIFIAI_TARGET_SUBNET_IDS"
+          aws cloudformation deploy             --stack-name "$VERIFIAI_TARGET_STACK"             --template-file infra/aws/real-target-stack.yml             --capabilities CAPABILITY_IAM             --no-fail-on-empty-changeset             --parameter-overrides               VpcId="$VERIFIAI_VPC_ID"               VpcCidr="$VERIFIAI_VPC_CIDR"               TargetSubnetIds="$VERIFIAI_TARGET_SUBNET_IDS"               EnablePublicHttpsEgress="$VERIFIAI_ENABLE_PUBLIC_HTTPS_EGRESS"
       - name: Print verified stack outputs
         run: aws cloudformation describe-stacks --stack-name "$VERIFIAI_TARGET_STACK" --query 'Stacks[0].Outputs' --output table

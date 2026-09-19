@@ -5,12 +5,14 @@ import { buildVerificationPlan, parseRequirements } from '../../packages/core/pl
 import type { Experiment } from '../../packages/contracts/src/index.js';
 import type { RunService } from './runs/service.js';
 import type { LiveAuditService } from './swarms/service.js';
+import type { LiveRepairService } from './repairs/service.js';
 
 export interface ApiDependencies {
   oauth: GitHubOAuthService;
   importer: RepositoryImportService;
   runs?: RunService;
   swarms?: LiveAuditService;
+  repairs?: LiveRepairService;
   webUrl?: string;
   secureCookies?: boolean;
 }
@@ -199,6 +201,52 @@ export function createApiServer(deps: ApiDependencies): Server {
       if (request.method === 'POST' && swarmStop) {
         if (!deps.swarms) return respond(response, 503, { error: 'real swarm service unavailable' });
         return respond(response, 200, { audit: await deps.swarms.stop(swarmStop[1]) });
+      }
+
+      const repairRoute = url.pathname.match(/^\/api\/audits\/([^/]+)\/repair$/);
+      if (request.method === 'POST' && repairRoute) {
+        if (!deps.swarms) return respond(response, 503, { error: 'real swarm service unavailable' });
+        if (!deps.repairs) return respond(response, 503, { error: 'real repair service unavailable' });
+        const context = deps.swarms.repairContext(repairRoute[1]);
+        if (!context) return respond(response, 404, { error: 'audit not found' });
+        if (!context.completed) return respond(response, 409, { error: 'audit must complete before repair can start' });
+        const body = await readJson(request);
+        const mutableTarget = body?.mutableTarget;
+        if (
+          !mutableTarget ||
+          typeof mutableTarget.id !== 'string' ||
+          !mutableTarget.id ||
+          mutableTarget.environment !== 'isolated-mutation' ||
+          (mutableTarget.url !== undefined && typeof mutableTarget.url !== 'string')
+        ) {
+          return respond(response, 400, { error: 'mutableTarget must include id and environment=isolated-mutation, plus optional url' });
+        }
+        const source = body?.source;
+        if (
+          !source ||
+          !['confirmed-defect', 'improvement-opportunity'].includes(source.classification) ||
+          typeof source.summary !== 'string' ||
+          !source.summary.trim() ||
+          !Array.isArray(source.evidenceRefs) ||
+          source.evidenceRefs.length === 0 ||
+          !source.evidenceRefs.every((value: unknown) => typeof value === 'string' && value.length > 0) ||
+          typeof source.visibleChange !== 'boolean' ||
+          (source.baselineUrl !== undefined && typeof source.baselineUrl !== 'string')
+        ) {
+          return respond(response, 400, { error: 'source must be evidence-backed and include classification, summary, evidenceRefs and visibleChange' });
+        }
+        const missing = deps.repairs.missingConfiguration(source.visibleChange);
+        if (missing.length) {
+          return respond(response, 503, { error: 'real repair runtime is not configured', missing });
+        }
+        const repair = await deps.repairs.run({
+          auditId: repairRoute[1],
+          ...context,
+          mutableTarget,
+          source,
+          reverificationTools: Array.isArray(body?.reverificationTools) ? body.reverificationTools : undefined,
+        });
+        return respond(response, repair.status === 'incomplete' ? 409 : 200, { repair });
       }
 
       if (request.method === 'POST' && url.pathname === '/api/runs') {
