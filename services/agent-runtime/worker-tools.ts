@@ -36,6 +36,18 @@ function selectedHeaders(headers: Headers): Record<string, string> {
   return Object.fromEntries(keep.map((name) => [name, headers.get(name)]).filter(([, value]) => value));
 }
 
+export function computerUseEvidenceOutcome(
+  engine: 'browser-use' | 'cua' | 'generic',
+  result: any,
+  responseOk: boolean,
+  identityOk: boolean,
+): 'pass' | 'fail' | 'unknown' {
+  const executed = responseOk && result?.ok !== false && identityOk;
+  if (!executed) return 'unknown';
+  if (engine === 'cua' && result?.completed !== true) return 'unknown';
+  return result?.successful === false ? 'fail' : 'pass';
+}
+
 export function createWorkerTools(
   brief: AgentWorkerLaunchBrief,
   emit: (event: AgentWorkerEvidenceEvent) => void | Promise<void>,
@@ -489,7 +501,7 @@ export function createWorkerTools(
           const expectedEngine = engine === 'browser-use' ? 'Browser Use' : engine === 'cua' ? 'Cua' : undefined;
           const identityOk = engine === 'generic' || (result?.engine === expectedEngine && result?.upstreamCommit === expectedCommit);
           const executed = response.ok && result?.ok !== false && identityOk;
-          const completedOk = engine !== 'cua' || result?.completed === true;
+          const outcome = computerUseEvidenceOutcome(engine, result, response.ok, identityOk);
           const item: EvidenceInput = {
             kind: 'screenshot',
             source: engine,
@@ -498,7 +510,7 @@ export function createWorkerTools(
               engine: result?.engine ?? engine,
               upstreamRepo: result?.upstreamRepo,
               upstreamCommit: result?.upstreamCommit,
-              outcome: executed && completedOk ? (result?.successful === false ? 'fail' : 'pass') : 'unknown',
+              outcome,
               status: response.status,
               objective,
               persona,
