@@ -92,7 +92,7 @@ export class LiveAuditService {
         })
       : new AgentCoreWorkerLauncher({
           defaultRuntime: {
-            region: this.env.AWS_REGION ?? 'us-west-2',
+            region: this.env.AWS_REGION ?? 'ap-south-1',
             runtimeArn: this.env.VERIFIAI_AGENTCORE_RUNTIME_ARN ?? '',
           },
         });
