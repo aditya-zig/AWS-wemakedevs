@@ -858,7 +858,7 @@ regressions: 0</code></pre>
   function renderLogin() {
     return `${appHeader()}<div class="auth-wrap"><div class="auth-card">
       ${brand()}<h2>Start verifying</h2><p class="muted">Connect your repository and run the first evidence-backed verification.</p>
-      <div class="auth-buttons"><button class="btn primary" data-action="github-oauth">Continue with GitHub</button><button class="btn" data-action="toast" data-message="Google OAuth is the next auth step after GitHub is verified.">Continue with Google</button></div>
+      <div class="auth-buttons"><button class="btn primary" data-action="github-oauth">Continue with GitHub</button><button class="btn" data-action="google-oauth">Continue with Google</button></div>
       <div class="divider">or</div>
       <label class="label" for="email">Email</label><input id="email" class="input" type="email" placeholder="you@company.com" style="margin-top:7px" />
       <button class="btn" style="width:100%;margin-top:10px" data-action="toast" data-message="Email sign-in is not enabled in this hackathon build.">Continue with email</button>
@@ -1242,6 +1242,11 @@ regressions: 0</code></pre>
         return;
       }
       if (!meResponse.ok) throw new Error(`Authentication check failed (HTTP ${meResponse.status})`);
+      const me = await meResponse.json();
+      if (!me.githubConnected) {
+        list.innerHTML = '<div class="repo-row"><div><div class="repo-name">Connect GitHub to load your repositories</div><div class="repo-meta"><span>You are signed in, but repository access still needs GitHub.</span></div></div><button class="btn primary sm" data-action="github-oauth">Connect GitHub</button></div>';
+        return;
+      }
       const response = await apiRequest('/api/github/repositories');
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
@@ -1317,6 +1322,8 @@ regressions: 0</code></pre>
       const kind = action.dataset.action;
       if (kind === 'github-oauth') {
         location.href = `${API_BASE.replace(/\/$/, '')}/api/auth/github`;
+      } else if (kind === 'google-oauth') {
+        location.href = `${API_BASE.replace(/\/$/, '')}/api/auth/google`;
       } else if (kind === 'logout') {
         apiRequest('/api/auth/logout', { method: 'POST' }).finally(() => navigate('landing'));
       } else if (kind === 'toggle-live') {
