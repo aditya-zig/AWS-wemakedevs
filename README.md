@@ -10,7 +10,7 @@ Aditya-owned core implemented here:
 
 - shared contracts for Project, Requirement, Experiment, Evidence, Finding, Repair and VerificationRun
 - frozen `VerificationTool` adapter boundary for the other implementation lanes
-- GitHub OAuth state validation, repository/branch listing and commit-pinned project import
+- GitHub OAuth plus Google OAuth sign-in with validated state, HttpOnly sessions, repository/branch listing and commit-pinned project import
 - persistent project metadata without storing OAuth tokens
 - deterministic requirement parsing + verification planning
 - verification orchestrator with pass/fail/unknown state machine and run events
@@ -40,7 +40,7 @@ Requires Node.js 22+ and TypeScript 5.8+.
 ```bash
 npm run check
 cp .env.example .env
-# fill GitHub OAuth values
+# fill GitHub + Google OAuth values
 npm run build
 npm run start:api
 ```
@@ -50,6 +50,12 @@ API defaults to `http://localhost:8787`.
 ## Main API
 
 - `GET /health`
+- `GET /api/auth/github`
+- `GET /api/auth/github/callback`
+- `GET /api/auth/google`
+- `GET /api/auth/google/callback`
+- `GET /api/auth/me`
+- `POST /api/auth/logout`
 - `POST /api/github/oauth/start`
 - `POST /api/github/oauth/callback`
 - `GET /api/github/repositories?sessionId=...`
