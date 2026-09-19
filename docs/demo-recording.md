@@ -1,8 +1,8 @@
-# VERIFIAI Deep Audit — final recording path
+# VERIFAI Deep Audit — final recording path
 
 Use the deterministic demo repository value `github.com/acme/checkout`.
 
-1. Open VERIFIAI and click **Audit your repo**.
+1. Open VERIFAI and click **Audit your repo**.
 2. Leave optional deployed URL/app empty for the deterministic recording. Explain that those inputs expand coverage when supplied.
 3. Click **Run Deep Audit**. Show live engine states, actions, evidence, coverage and the hard run budget.
 4. Pause on the combined report: three reproduced findings are impact-sorted. Point out Confirmed vs Incomplete/Unknown semantics.
