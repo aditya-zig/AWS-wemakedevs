@@ -489,6 +489,7 @@ export function createWorkerTools(
           const expectedEngine = engine === 'browser-use' ? 'Browser Use' : engine === 'cua' ? 'Cua' : undefined;
           const identityOk = engine === 'generic' || (result?.engine === expectedEngine && result?.upstreamCommit === expectedCommit);
           const executed = response.ok && result?.ok !== false && identityOk;
+          const completedOk = engine !== 'cua' || result?.completed === true;
           const item: EvidenceInput = {
             kind: 'screenshot',
             source: engine,
@@ -497,7 +498,7 @@ export function createWorkerTools(
               engine: result?.engine ?? engine,
               upstreamRepo: result?.upstreamRepo,
               upstreamCommit: result?.upstreamCommit,
-              outcome: executed ? (result?.successful === false ? 'fail' : 'pass') : 'unknown',
+              outcome: executed && completedOk ? (result?.successful === false ? 'fail' : 'pass') : 'unknown',
               status: response.status,
               objective,
               persona,
@@ -506,6 +507,10 @@ export function createWorkerTools(
               actions: Array.isArray(result?.actions) ? result.actions.slice(0, 100) : [],
               urls: Array.isArray(result?.urls) ? result.urls.slice(0, 100) : [],
               finalResult: typeof result?.finalResult === 'string' ? safeText(result.finalResult, 5_000) : undefined,
+              finalResponse: typeof result?.finalResponse === 'string' ? safeText(result.finalResponse, 5_000) : undefined,
+              trajectory: Array.isArray(result?.trajectory) ? result.trajectory.slice(0, 100) : [],
+              trajectoryRef: typeof result?.trajectoryRef === 'string' ? result.trajectoryRef : undefined,
+              completed: result?.completed === true,
               summary: typeof result?.summary === 'string' ? safeText(result.summary, 5_000) : undefined,
               identityVerified: identityOk,
             },
