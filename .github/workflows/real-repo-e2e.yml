@@ -26,6 +26,10 @@ permissions:
   id-token: write
   contents: read
 
+concurrency:
+  group: verifiai-fargate-target
+  cancel-in-progress: false
+
 jobs:
   real-repo-e2e:
     runs-on: ubuntu-latest
@@ -154,6 +158,24 @@ jobs:
               echo "::endgroup::"
             done
           done
+
+      - name: Emergency exact-task teardown
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          failed=0
+          if [ -n "${VERIFIAI_E2E_TASK_ARN:-}" ] && [ -n "${VERIFIAI_ECS_CLUSTER:-}" ]; then
+            aws ecs stop-task \
+              --cluster "$VERIFIAI_ECS_CLUSTER" \
+              --task "$VERIFIAI_E2E_TASK_ARN" \
+              --reason "VERIFAI GitHub workflow finalizer" >/dev/null || failed=1
+          fi
+          if [ -n "${VERIFIAI_E2E_TASK_DEFINITION_ARN:-}" ]; then
+            aws ecs deregister-task-definition \
+              --task-definition "$VERIFIAI_E2E_TASK_DEFINITION_ARN" >/dev/null || failed=1
+          fi
+          exit "$failed"
 
       - uses: actions/upload-artifact@v4
         if: always()
