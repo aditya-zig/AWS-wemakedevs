@@ -138,7 +138,7 @@ export class StrandsAuditPlanningAgent implements AuditPlanningAgent {
 
   async propose(context: AuditPlannerContext): Promise<PlannedWorker[]> {
     const prompt = [
-      'Create the initial VERIFIAI Deep Audit worker plan.',
+      'Create the initial VERIFAI Deep Audit worker plan.',
       'Return JSON only in this exact shape: {"workers":[{"role":"...","objective":"...","mandatory":true}]}.',
       'Use only roles listed in availableRoles. Prefer the four baseline specialist roles when applicable.',
       'Do not invent tools, credentials, targets, findings, or evidence.',
@@ -171,7 +171,7 @@ export async function createStrandsPlanningAgent(
     model,
     printer: false,
     systemPrompt: [
-      'You are the ephemeral VERIFIAI audit orchestrator.',
+      'You are the ephemeral VERIFAI audit orchestrator.',
       'Plan work for isolated specialist agents; do not perform their verification yourself.',
       'Workers never communicate peer-to-peer. Never claim evidence you did not receive.',
       'Respect bounded concurrency, scoped tools, immutable shared targets, and isolated mutation targets.',
