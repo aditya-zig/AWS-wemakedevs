@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: VERIFIAI hackathon sandbox control-plane primitives
+Description: VERIFAI hackathon sandbox control-plane primitives
 Parameters:
   SandboxImage:
     Type: String
