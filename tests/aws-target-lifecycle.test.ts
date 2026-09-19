@@ -61,6 +61,8 @@ test('A05 performs CodeBuild -> ECR -> ephemeral Fargate task -> health -> teard
     async send(command: any) {
       ecsCommands.push(command.constructor.name);
       switch (command.constructor.name) {
+        case 'ListTasksCommand':
+          return { taskArns: [] };
         case 'DescribeTaskDefinitionCommand':
           return {
             taskDefinition: {
@@ -119,6 +121,7 @@ test('A05 performs CodeBuild -> ECR -> ephemeral Fargate task -> health -> teard
   await lifecycle.stop(handle);
 
   assert.deepEqual(codebuildCommands, ['StartBuildCommand', 'BatchGetBuildsCommand']);
+  assert.ok(ecsCommands.includes('ListTasksCommand'));
   assert.ok(ecsCommands.includes('StopTaskCommand'));
   assert.ok(ecsCommands.includes('DeregisterTaskDefinitionCommand'));
 });
