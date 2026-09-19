@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createApiServer } from '../apps/api/server.js';
 import { CredentialVault, GitHubOAuthService, MemoryProjectStore, RepositoryImportService, type GitHubTransport } from '../packages/core/github/index.js';
+import { GoogleOAuthService, type GoogleOAuthTransport } from '../packages/core/google/index.js';
 import { VerificationOrchestrator } from '../packages/core/orchestrator/index.js';
 import { RunService } from '../apps/api/runs/service.js';
 import type { ToolName } from '../packages/contracts/src/index.js';
@@ -24,6 +25,17 @@ test('api exposes health, deterministic planning and repository import endpoints
   };
   const vault = new CredentialVault();
   const oauth = new GitHubOAuthService({ clientId: 'client', clientSecret: 'secret', callbackUrl: 'http://localhost/callback', stateSecret: 'state-secret' }, transport, vault);
+  const googleTransport: GoogleOAuthTransport = {
+    async exchangeCode(input) {
+      assert.equal(input.code, 'google-code');
+      return { access_token: 'google-token' };
+    },
+    async fetchUser(accessToken) {
+      assert.equal(accessToken, 'google-token');
+      return { sub: 'google-1', email: 'google@example.test', name: 'Google User', email_verified: true };
+    },
+  };
+  const googleOauth = new GoogleOAuthService({ clientId: 'google-client', clientSecret: 'google-secret', callbackUrl: 'http://localhost/api/auth/google/callback', stateSecret: 'state-secret' }, googleTransport);
   const projects = new MemoryProjectStore();
   const importer = new RepositoryImportService(vault, transport, projects);
   const runners = new Map<ToolName, any>([
@@ -31,7 +43,7 @@ test('api exposes health, deterministic planning and repository import endpoints
     ['desktop', async () => ({ status: 'pass', evidence: [{ kind: 'screenshot', source: 'desktop', executed: true, payload: { outcome: 'pass' } }] })],
   ]);
   const runs = new RunService(new VerificationOrchestrator(runners));
-  const server = createApiServer({ oauth, importer, runs, webUrl: 'http://localhost:4173', secureCookies: false });
+  const server = createApiServer({ oauth, googleOauth, importer, runs, webUrl: 'http://localhost:4173', secureCookies: false });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const address = server.address() as any;
   const base = `http://127.0.0.1:${address.port}`;
@@ -45,6 +57,8 @@ test('api exposes health, deterministic planning and repository import endpoints
     const browserCookie = browserStart.headers.get('set-cookie')?.split(';')[0];
     const authorizeLocation = browserStart.headers.get('location');
     assert.ok(browserCookie);
+    assert.match(browserStart.headers.get('set-cookie') || '', /HttpOnly/);
+    assert.match(browserStart.headers.get('set-cookie') || '', /SameSite=Lax/);
     assert.ok(authorizeLocation);
     const browserState = new URL(authorizeLocation!).searchParams.get('state');
     assert.ok(browserState);
@@ -77,6 +91,48 @@ test('api exposes health, deterministic planning and repository import endpoints
     assert.equal(logout.status, 200);
     const afterLogout = await fetch(`${base}/api/auth/me`, { headers: { cookie: browserCookie! } });
     assert.equal(afterLogout.status, 401);
+
+    const googleStart = await fetch(`${base}/api/auth/google`, { redirect: 'manual' });
+    assert.equal(googleStart.status, 302);
+    const googleCookie = googleStart.headers.get('set-cookie')?.split(';')[0];
+    const googleAuthorizeLocation = googleStart.headers.get('location');
+    assert.ok(googleCookie);
+    assert.match(googleStart.headers.get('set-cookie') || '', /HttpOnly/);
+    assert.ok(googleAuthorizeLocation);
+    assert.equal(new URL(googleAuthorizeLocation!).origin, 'https://accounts.google.com');
+    const googleState = new URL(googleAuthorizeLocation!).searchParams.get('state');
+    assert.ok(googleState);
+
+    const rejectedGoogleCallback = await fetch(`${base}/api/auth/google/callback?code=google-code&state=invalid-state`, {
+      headers: { cookie: googleCookie! },
+      redirect: 'manual',
+    });
+    assert.equal(rejectedGoogleCallback.status, 400);
+
+    const googleRestart = await fetch(`${base}/api/auth/google`, { headers: { cookie: googleCookie! }, redirect: 'manual' });
+    const googleRestartState = new URL(googleRestart.headers.get('location')!).searchParams.get('state');
+    assert.ok(googleRestartState);
+    const googleCallback = await fetch(`${base}/api/auth/google/callback?code=google-code&state=${encodeURIComponent(googleRestartState!)}`, {
+      headers: { cookie: googleCookie! },
+      redirect: 'manual',
+    });
+    assert.equal(googleCallback.status, 302);
+    assert.match(googleCallback.headers.get('location') || '', /auth=google/);
+
+    const googleMe = await fetch(`${base}/api/auth/me`, { headers: { cookie: googleCookie! } });
+    assert.equal(googleMe.status, 200);
+    const googleMeBody = await googleMe.json() as any;
+    assert.equal(googleMeBody.authenticated, true);
+    assert.equal(googleMeBody.provider, 'google');
+    assert.equal(googleMeBody.githubConnected, false);
+    assert.equal(googleMeBody.user.email, 'google@example.test');
+    assert.equal(JSON.stringify(googleMeBody).includes('google-token'), false);
+
+    const googleLogout = await fetch(`${base}/api/auth/logout`, { method: 'POST', headers: { cookie: googleCookie! } });
+    assert.equal(googleLogout.status, 200);
+    assert.match(googleLogout.headers.get('set-cookie') || '', /Max-Age=0/);
+    const googleAfterLogout = await fetch(`${base}/api/auth/me`, { headers: { cookie: googleCookie! } });
+    assert.equal(googleAfterLogout.status, 401);
 
     const start = await post(base, '/api/github/oauth/start', { sessionId: 's1' });
     assert.equal(start.status, 200);
