@@ -32,7 +32,7 @@ jobs:
     timeout-minutes: 180
     env:
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
-      AWS_REGION: ${{ vars.AWS_REGION || 'us-west-2' }}
+      AWS_REGION: ${{ vars.AWS_REGION || 'ap-south-1' }}
       VERIFIAI_TARGET_STACK: ${{ vars.VERIFIAI_TARGET_STACK || 'verifiai-real-target' }}
       VERIFIAI_AGENTCORE_STACK: ${{ vars.VERIFIAI_AGENTCORE_STACK || 'verifiai-agentcore' }}
       VERIFIAI_ENGINE_STACK: ${{ vars.VERIFIAI_ENGINE_STACK || 'verifiai-external-engines' }}
