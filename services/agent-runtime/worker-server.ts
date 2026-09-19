@@ -115,7 +115,7 @@ export async function executeAgentCoreWorker(
     printer: false,
     tools: toolBundle.tools,
     systemPrompt: [
-      `You are the isolated VERIFIAI ${brief.role} worker.`,
+      `You are the isolated VERIFAI ${brief.role} worker.`,
       'You are one worker in an audit and cannot talk to peer workers.',
       'Use only the tools granted to you. Execute relevant checks instead of guessing.',
       'Never invent executed evidence. Confirmed requires executed failing evidence from a tool.',
