@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { AwsTargetLifecycle } from '../dist/services/bootstrap/aws-target-lifecycle.js';
 import { LiveAuditService } from '../dist/apps/api/swarms/service.js';
@@ -91,6 +91,9 @@ async function main() {
       healthPath: candidate.healthPath,
     });
     record.target = target;
+    if (process.env.GITHUB_ENV) {
+      await appendFile(process.env.GITHUB_ENV, `VERIFIAI_E2E_TASK_ARN=${target.taskArn}\nVERIFIAI_E2E_TASK_DEFINITION_ARN=${target.taskDefinitionArn}\n`);
+    }
 
     const service = new LiveAuditService({
       env: {
@@ -117,7 +120,8 @@ async function main() {
       objective: candidate.objective,
     });
 
-    const deadline = Date.now() + Number(process.env.VERIFIAI_E2E_TIMEOUT_MS || 20 * 60_000);
+    const configuredTtlMs = Math.min(Number(process.env.VERIFIAI_E2E_TIMEOUT_MS || 20 * 60_000), 20 * 60_000);
+    const deadline = new Date(target.launchedAt).getTime() + configuredTtlMs;
     let current = started;
     while (!current.state.finished && !current.error) {
       if (Date.now() >= deadline) {
