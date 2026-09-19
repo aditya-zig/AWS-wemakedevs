@@ -1,4 +1,4 @@
-name: VERIFIAI CI
+name: VERIFAI CI
 on:
   push:
     branches: [main]
