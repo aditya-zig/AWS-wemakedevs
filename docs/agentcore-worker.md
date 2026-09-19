@@ -16,7 +16,7 @@ After a real AgentCore runtime has been deployed and the caller has `bedrock-age
 ```bash
 VERIFIAI_AGENTCORE_RUNTIME_ARN='arn:aws:bedrock-agentcore:...' \
 VERIFIAI_AGENTCORE_MODEL_PROFILE='openrouter:<model-id>' \
-AWS_REGION='us-west-2' \
+AWS_REGION='ap-south-1' \
 npm run verify:agentcore
 ```
 
