@@ -41,8 +41,11 @@ function cookies(request: IncomingMessage): Record<string, string> {
     return index < 0 ? [part, ''] : [part.slice(0, index), decodeURIComponent(part.slice(index + 1))];
   }));
 }
+function cookieSessionId(request: IncomingMessage): string | undefined {
+  return cookies(request)[SESSION_COOKIE] || undefined;
+}
 function sessionId(request: IncomingMessage, url?: URL, body?: any): string | undefined {
-  return cookies(request)[SESSION_COOKIE] || url?.searchParams.get('sessionId') || (typeof body?.sessionId === 'string' ? body.sessionId : undefined) || undefined;
+  return cookieSessionId(request) || url?.searchParams.get('sessionId') || (typeof body?.sessionId === 'string' ? body.sessionId : undefined) || undefined;
 }
 function setSessionCookie(response: ServerResponse, value: string, secure: boolean): void {
   response.setHeader('set-cookie', `${SESSION_COOKIE}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400${secure ? '; Secure' : ''}`);
@@ -88,13 +91,13 @@ export function createApiServer(deps: ApiDependencies): Server {
       if (request.method === 'GET' && url.pathname === '/health') return respond(response, 200, { ok: true, service: 'verifiai-api' });
 
       if (request.method === 'GET' && url.pathname === '/api/auth/github') {
-        const id = sessionId(request, url) || randomUUID();
+        const id = cookieSessionId(request) || randomUUID();
         const { authorizationUrl } = deps.oauth.createAuthorizationUrl(id);
         setSessionCookie(response, id, secureCookies);
         return redirect(response, authorizationUrl);
       }
       if (request.method === 'GET' && url.pathname === '/api/auth/github/callback') {
-        const id = sessionId(request, url);
+        const id = cookieSessionId(request);
         const code = url.searchParams.get('code');
         const state = url.searchParams.get('state');
         if (!id || !code || !state) return respond(response, 400, { error: 'GitHub callback is missing session, code or state' });
@@ -103,14 +106,14 @@ export function createApiServer(deps: ApiDependencies): Server {
       }
       if (request.method === 'GET' && url.pathname === '/api/auth/google') {
         if (!deps.googleOauth) return respond(response, 503, { error: 'Google OAuth is not configured' });
-        const id = sessionId(request, url) || randomUUID();
+        const id = cookieSessionId(request) || randomUUID();
         const { authorizationUrl } = deps.googleOauth.createAuthorizationUrl(id);
         setSessionCookie(response, id, secureCookies);
         return redirect(response, authorizationUrl);
       }
       if (request.method === 'GET' && url.pathname === '/api/auth/google/callback') {
         if (!deps.googleOauth) return respond(response, 503, { error: 'Google OAuth is not configured' });
-        const id = sessionId(request, url);
+        const id = cookieSessionId(request);
         const code = url.searchParams.get('code');
         const state = url.searchParams.get('state');
         if (!id || !code || !state) return respond(response, 400, { error: 'Google callback is missing session, code or state' });
@@ -119,7 +122,7 @@ export function createApiServer(deps: ApiDependencies): Server {
       }
       if (request.method === 'GET' && url.pathname === '/api/auth/me') {
         response.setHeader('cache-control', 'no-store');
-        const id = sessionId(request, url);
+        const id = cookieSessionId(request);
         if (!id) return respond(response, 401, { authenticated: false });
         if (deps.googleOauth?.isAuthenticated(id)) {
           return respond(response, 200, {
@@ -139,7 +142,7 @@ export function createApiServer(deps: ApiDependencies): Server {
       }
       if (request.method === 'POST' && url.pathname === '/api/auth/logout') {
         response.setHeader('cache-control', 'no-store');
-        const id = sessionId(request, url);
+        const id = cookieSessionId(request);
         if (id) {
           deps.oauth.logout(id);
           deps.googleOauth?.logout(id);
