@@ -183,7 +183,7 @@ export class FetchGitHubTransport implements GitHubTransport {
   async request<T>(method: string, path: string, body?: unknown, token?: string): Promise<T> {
     const oauth = path === '/login/oauth/access_token';
     const url = oauth ? `https://github.com${path}` : `https://api.github.com${path}`;
-    const headers: Record<string, string> = { accept: oauth ? 'application/json' : 'application/vnd.github+json', 'user-agent': 'VERIFIAI' };
+    const headers: Record<string, string> = { accept: oauth ? 'application/json' : 'application/vnd.github+json', 'user-agent': 'VERIFAI' };
     if (body !== undefined) headers['content-type'] = 'application/json';
     if (token) headers.authorization = `Bearer ${token}`;
     const response = await fetch(url, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
