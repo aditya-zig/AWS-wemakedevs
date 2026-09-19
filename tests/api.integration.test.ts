@@ -92,11 +92,12 @@ test('api exposes health, deterministic planning and repository import endpoints
     const afterLogout = await fetch(`${base}/api/auth/me`, { headers: { cookie: browserCookie! } });
     assert.equal(afterLogout.status, 401);
 
-    const googleStart = await fetch(`${base}/api/auth/google`, { redirect: 'manual' });
+    const googleStart = await fetch(`${base}/api/auth/google?sessionId=attacker-controlled`, { redirect: 'manual' });
     assert.equal(googleStart.status, 302);
     const googleCookie = googleStart.headers.get('set-cookie')?.split(';')[0];
     const googleAuthorizeLocation = googleStart.headers.get('location');
     assert.ok(googleCookie);
+    assert.equal(googleCookie!.includes('attacker-controlled'), false);
     assert.match(googleStart.headers.get('set-cookie') || '', /HttpOnly/);
     assert.ok(googleAuthorizeLocation);
     assert.equal(new URL(googleAuthorizeLocation!).origin, 'https://accounts.google.com');
@@ -138,6 +139,8 @@ test('api exposes health, deterministic planning and repository import endpoints
     assert.equal(start.status, 200);
     const callback = await post(base, '/api/github/oauth/callback', { sessionId: 's1', code: 'code', state: start.body.state });
     assert.equal(callback.status, 200);
+    const queryOnlyMe = await fetch(`${base}/api/auth/me?sessionId=s1`);
+    assert.equal(queryOnlyMe.status, 401);
 
     const branches = await fetch(`${base}/api/github/repositories/acme/shop/branches?sessionId=s1`);
     assert.equal(branches.status, 200);
