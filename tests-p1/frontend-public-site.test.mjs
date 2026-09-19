@@ -13,7 +13,7 @@ test('public site contains the complete VERIFAI marketing story', () => {
   for (const id of ['product','demo','how','workflow','security','developers']) {
     assert.match(html, new RegExp(`id=["']${id}["']`), `missing #${id}`);
   }
-  assert.match(html, /Start Deep Audit/);
+  assert.match(html, /Start Verification/);
   assert.match(html, /Evidence-backed/);
   assert.match(html, /Know if your software actually works\./);
   assert.match(html, /Your users should not be your first real-world test\./);
