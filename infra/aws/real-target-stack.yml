@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: VERIFIAI CodeBuild -> ECR -> private Fargate target lifecycle
+Description: VERIFAI CodeBuild -> ECR -> private Fargate target lifecycle
 
 Parameters:
   VpcId:
@@ -32,7 +32,7 @@ Resources:
         EncryptionType: AES256
       LifecyclePolicy:
         LifecyclePolicyText: |
-          {"rules":[{"rulePriority":1,"description":"Expire old VERIFIAI target images","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":20},"action":{"type":"expire"}}]}
+          {"rules":[{"rulePriority":1,"description":"Expire old VERIFAI target images","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":20},"action":{"type":"expire"}}]}
 
   VerificationCluster:
     Type: AWS::ECS::Cluster
@@ -47,7 +47,7 @@ Resources:
   AuditorSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: VERIFIAI AgentCore workers and private health probes
+      GroupDescription: VERIFAI AgentCore workers and private health probes
       VpcId: !Ref VpcId
       SecurityGroupEgress:
         - !If
@@ -72,7 +72,7 @@ Resources:
   TargetSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Private VERIFIAI audit targets
+      GroupDescription: Private VERIFAI audit targets
       VpcId: !Ref VpcId
       SecurityGroupEgress:
         - !If
@@ -177,7 +177,7 @@ Resources:
     Type: AWS::BedrockAgentCore::BrowserCustom
     Properties:
       Name: !Sub verifiaiProof${AWS::AccountId}
-      Description: VERIFIAI private browser with real S3 session recording for proof-of-fix
+      Description: VERIFAI private browser with real S3 session recording for proof-of-fix
       ExecutionRoleArn: !GetAtt ProofBrowserRole.Arn
       NetworkConfiguration:
         NetworkMode: VPC
