@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: VERIFIAI AgentCore worker runtime for the Strands worker contract
+Description: VERIFAI AgentCore worker runtime for the Strands worker contract
 
 Parameters:
   AgentRuntimeName:
@@ -73,7 +73,7 @@ Resources:
     Type: AWS::BedrockAgentCore::Runtime
     Properties:
       AgentRuntimeName: !Ref AgentRuntimeName
-      Description: VERIFIAI isolated Strands worker runtime
+      Description: VERIFAI isolated Strands worker runtime
       AgentRuntimeArtifact:
         ContainerConfiguration:
           ContainerUri: !Ref WorkerImageUri
