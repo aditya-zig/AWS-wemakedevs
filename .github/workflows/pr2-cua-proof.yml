@@ -22,18 +22,39 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      CUA_MODEL_KEY: ${{ secrets.VERIFIAI_CUA_MODEL_API_KEY || secrets.OPENROUTER_API_KEY || secrets.LLM_API_KEY }}
-      CUA_MODEL_BASE: ${{ vars.VERIFIAI_CUA_MODEL_API_BASE || 'https://openrouter.ai/api/v1' }}
-      CUA_MODEL: ${{ vars.VERIFIAI_CUA_MODEL || 'openai/gpt-4o-mini' }}
+      DIRECT_CUA_MODEL_KEY: ${{ secrets.VERIFIAI_CUA_MODEL_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Require real model credential
+      - name: Select real model credential
         shell: bash
         run: |
           set -euo pipefail
-          if [ -z "${CUA_MODEL_KEY:-}" ]; then
-            echo "No VERIFIAI_CUA_MODEL_API_KEY, OPENROUTER_API_KEY, or LLM_API_KEY repository secret is configured."
+          if [ -n "${DIRECT_CUA_MODEL_KEY:-}" ]; then
+            echo "CUA_MODEL_KEY=$DIRECT_CUA_MODEL_KEY" >> "$GITHUB_ENV"
+            echo "CUA_MODEL_BASE=${{ vars.VERIFIAI_CUA_MODEL_API_BASE || 'https://openrouter.ai/api/v1' }}" >> "$GITHUB_ENV"
+            echo "CUA_MODEL=${{ vars.VERIFIAI_CUA_MODEL || 'openai/gpt-4o-mini' }}" >> "$GITHUB_ENV"
+            echo "Selected explicitly configured Cua model credential."
+          elif [ -n "${OPENROUTER_API_KEY:-}" ]; then
+            echo "CUA_MODEL_KEY=$OPENROUTER_API_KEY" >> "$GITHUB_ENV"
+            echo "CUA_MODEL_BASE=https://openrouter.ai/api/v1" >> "$GITHUB_ENV"
+            echo "CUA_MODEL=${{ vars.VERIFIAI_CUA_MODEL || 'openai/gpt-4o-mini' }}" >> "$GITHUB_ENV"
+            echo "Selected OpenRouter."
+          elif [ -n "${NVIDIA_API_KEY:-}" ]; then
+            echo "CUA_MODEL_KEY=$NVIDIA_API_KEY" >> "$GITHUB_ENV"
+            echo "CUA_MODEL_BASE=https://integrate.api.nvidia.com/v1" >> "$GITHUB_ENV"
+            echo "CUA_MODEL=openai/qwen/qwen3.5-122b-a10b" >> "$GITHUB_ENV"
+            echo "Selected NVIDIA NIM."
+          elif [ -n "${LLM_API_KEY:-}" ]; then
+            echo "CUA_MODEL_KEY=$LLM_API_KEY" >> "$GITHUB_ENV"
+            echo "CUA_MODEL_BASE=${{ vars.VERIFIAI_CUA_MODEL_API_BASE || 'https://openrouter.ai/api/v1' }}" >> "$GITHUB_ENV"
+            echo "CUA_MODEL=${{ vars.VERIFIAI_CUA_MODEL || 'openai/gpt-4o-mini' }}" >> "$GITHUB_ENV"
+            echo "Selected generic configured LLM credential."
+          else
+            echo "No VERIFIAI_CUA_MODEL_API_KEY, OPENROUTER_API_KEY, NVIDIA_API_KEY, or LLM_API_KEY repository secret is configured."
             exit 2
           fi
 
