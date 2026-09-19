@@ -1,9 +1,9 @@
 name: PR2 Cua Proof
 
 on:
-  push:
+  pull_request:
     branches:
-      - fix/real-cua-and-deep-audit-expectations
+      - main
   workflow_dispatch:
 
 jobs:
