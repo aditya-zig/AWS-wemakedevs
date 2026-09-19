@@ -52,7 +52,7 @@ async function main() {
   const commitSha = await resolveCommit(candidate.fullName, candidate.branch);
   const auditTag = `e2e-${candidate.id}-${commitSha.slice(0, 10)}-${Date.now()}`;
   const lifecycle = new AwsTargetLifecycle({
-    region: process.env.AWS_REGION || 'us-west-2',
+    region: process.env.AWS_REGION || 'ap-south-1',
     codeBuildProject: required('VERIFIAI_CODEBUILD_PROJECT'),
     ecrRepository: required('VERIFIAI_ECR_REPOSITORY'),
     ecrRegistry: required('VERIFIAI_ECR_REGISTRY'),
