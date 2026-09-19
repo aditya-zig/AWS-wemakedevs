@@ -110,7 +110,7 @@ Resources:
         VERIFIAI_MUTATION_SERVICE_URL: !Ref MutationServiceUrl
       LifecycleConfiguration:
         IdleRuntimeSessionTimeout: 300
-        MaxLifetime: 1800
+        MaxLifetime: 1200
       NetworkConfiguration:
         NetworkMode: VPC
         NetworkModeConfig:
