@@ -33,6 +33,10 @@ jobs:
       NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
       OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
       VERIFIAI_COMPUTER_USE_URL: ${{ vars.VERIFIAI_COMPUTER_USE_URL }}
+      VERIFIAI_BROWSER_USE_URL: ${{ vars.VERIFIAI_BROWSER_USE_URL }}
+      VERIFIAI_CUA_URL: ${{ vars.VERIFIAI_CUA_URL }}
+      VERIFIAI_EXTERNAL_ENGINE_URL: ${{ vars.VERIFIAI_EXTERNAL_ENGINE_URL }}
+      VERIFIAI_EXTERNAL_ENGINE_TOKEN: ${{ secrets.VERIFIAI_EXTERNAL_ENGINE_TOKEN }}
       VERIFIAI_COMPUTER_USE_TOKEN: ${{ secrets.VERIFIAI_COMPUTER_USE_TOKEN }}
     steps:
       - uses: actions/checkout@v4
@@ -44,12 +48,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for name in AWS_ROLE_ARN VERIFIAI_MODEL_PROVIDER VERIFIAI_MODEL_ID; do
+          for name in AWS_ROLE_ARN VERIFIAI_MODEL_PROVIDER VERIFIAI_MODEL_ID VERIFIAI_EXTERNAL_ENGINE_URL; do
             if [ -z "${!name:-}" ]; then
               echo "::error::Missing required configuration: $name"
               exit 1
             fi
           done
+          if [ -z "${VERIFIAI_BROWSER_USE_URL:-}" ] && [ -z "${VERIFIAI_CUA_URL:-}" ]; then
+            echo "::error::A11 requires a real Browser Use or Cua endpoint"
+            exit 1
+          fi
+          case "$VERIFIAI_MODEL_PROVIDER" in
+            openrouter) [ -n "${OPENROUTER_API_KEY:-}" ] || { echo "::error::OPENROUTER_API_KEY is missing"; exit 1; } ;;
+            nvidia) [ -n "${NVIDIA_API_KEY:-}" ] || { echo "::error::NVIDIA_API_KEY is missing"; exit 1; } ;;
+            ollama-cloud) [ -n "${OLLAMA_API_KEY:-}" ] || { echo "::error::OLLAMA_API_KEY is missing"; exit 1; } ;;
+            *) echo "::error::Unsupported VERIFIAI_MODEL_PROVIDER=$VERIFIAI_MODEL_PROVIDER"; exit 1 ;;
+          esac
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
