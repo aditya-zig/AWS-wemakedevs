@@ -6,7 +6,7 @@ const html = await readFile(new URL('../apps/web/index.html', import.meta.url), 
 const css = await readFile(new URL('../apps/web/styles.css', import.meta.url), 'utf8').catch(() => '');
 const js = await readFile(new URL('../apps/web/app.js', import.meta.url), 'utf8').catch(() => '');
 
-test('public site contains the complete VERIFIAI marketing story', () => {
+test('public site contains the complete VERIFAI marketing story', () => {
   // The 18 Sep frontend consolidated the old deep-audit/report/fix anchors into
   // the product demo + workflow application shell. Keep this assertion tied to
   // the published DOM rather than obsolete prototype section IDs.
