@@ -6,7 +6,7 @@ The hackathon sandbox has an AWS-ready path using ECR + ECS Fargate + S3 + Cloud
 
 1. Build `services/sandbox/Dockerfile` and push it to Amazon ECR.
 2. Deploy `infra/aws/cloudformation.yml` with `SandboxImage=<ECR image URI>`.
-3. Run the resulting ECS task in private networking and expose the control API only to the VERIFIAI backend.
+3. Run the resulting ECS task in private networking and expose the control API only to the VERIFAI backend.
 4. Store run artifacts in the encrypted S3 bucket returned by the stack.
 5. Use CloudWatch logs as runtime evidence.
 
