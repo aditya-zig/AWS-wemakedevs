@@ -1,4 +1,4 @@
-# VERIFIAI frozen contracts
+# VERIFAI frozen contracts
 
 Architecture freeze: 2026-09-18. The newer **Grill with Docs** decisions supersede the 17 Sep deterministic-agent design.
 
