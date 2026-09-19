@@ -98,6 +98,6 @@ export function createDemoServer({ deepAudit = new DeepAuditService() } = {}) {
 const entry = process.argv[1] ? resolve(process.argv[1]) : '';
 if (entry === fileURLToPath(import.meta.url)) {
   createDemoServer().listen(Number(process.env.WEB_PORT ?? 4173), () => {
-    console.log('VERIFIAI demo web: http://localhost:4173');
+    console.log('VERIFAI demo web: http://localhost:4173');
   });
 }
