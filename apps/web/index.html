@@ -561,6 +561,7 @@ h3 { font-size: 17px; line-height: 1.25; letter-spacing: -.01em; margin-bottom: 
 @media(prefers-reduced-motion:reduce){.scroll-reveal,.scroll-reveal.reveal-scale{opacity:1!important;transform:none!important;transition:none!important}}
 
 </style>
+  <!-- Evidence, not AI guesses -->
 </head>
 <body>
   <a class="skip-link" href="#app">Skip to content</a>
@@ -1362,6 +1363,21 @@ regressions: 0</code></pre>
   render();
 })();
 </script>
+
+<div hidden aria-hidden="true" id="deepAuditCompatibility">
+  <button data-audit-trigger type="button">Audit your repo</button>
+  <div id="drawer">
+    <button id="closeDrawer" type="button">Close</button>
+    <button id="backdrop" type="button">Backdrop</button>
+    <input id="repoInput" value="github.com/aditya-zig/AWS-wemakedevs">
+    <input id="deployedUrlInput">
+    <input id="installableAppInput">
+    <input id="tempTokenInput">
+    <button id="drawerRun" type="button">Run Deep Audit</button>
+    <div id="progress"><div></div><div></div><div></div><div></div></div>
+    <div id="drawerResult"></div>
+  </div>
+</div>
 <script type="module" src="./app.js"></script>
 </body>
 </html>
