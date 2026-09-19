@@ -1,8 +1,8 @@
-# VERIFIAI
+# VERIFAI
 
 Autonomous Software Verification Lab for the WeMakeDevs AWS Hackathon.
 
-VERIFIAI turns requirements into real experiments, executes them through isolated verification tools, records reproducible evidence, investigates failures, applies repairs in a controlled branch and reruns the same verification before changing a requirement to **VERIFIED**.
+VERIFAI turns requirements into real experiments, executes them through isolated verification tools, records reproducible evidence, investigates failures, applies repairs in a controlled branch and reruns the same verification before changing a requirement to **VERIFIED**.
 
 ## Current core
 
