@@ -27,7 +27,7 @@ export function createCuaAdapter({
 
   return {
     name: 'desktop',
-    capabilities: ['cua', 'desktop-interaction', 'computer-use', 'screenshot-evidence'],
+    capabilities: ['cua', 'desktop-interaction', 'computer-use', 'screenshot-evidence', 'trajectory'],
     async healthcheck() {
       if (!serviceUrl) return { ok: false, detail: 'VERIFIAI_CUA_URL is not configured' };
       try {
@@ -57,11 +57,12 @@ export function createCuaAdapter({
           objective: cfg.objective ?? experiment.description,
           persona: cfg.persona,
           model: cfg.model,
-          provider: cfg.provider,
+          provider: cfg.provider ?? 'docker',
+          budgetUsd: Math.min(Number(cfg.budgetUsd ?? 0.25), 1),
         }),
       });
       const identityOk = result.engine === 'Cua' && result.upstreamCommit === UPSTREAM.commit;
-      const status = identityOk && result.ok === true ? 'pass' : 'unknown';
+      const status = identityOk && result.ok === true && result.completed === true ? 'pass' : 'unknown';
       lastEvidence = [{
         kind: 'screenshot',
         source: 'cua',
@@ -77,8 +78,11 @@ export function createCuaAdapter({
           model: result.model,
           durationMs: result.durationMs,
           actions: Array.isArray(result.actions) ? result.actions.slice(0, 100) : [],
+          trajectory: Array.isArray(result.trajectory) ? result.trajectory.slice(0, 100) : [],
           screenshotRefs: Array.isArray(result.screenshotRefs) ? result.screenshotRefs.slice(0, 20) : [],
           trajectoryRef: result.trajectoryRef ?? null,
+          finalResponse: result.finalResponse ?? null,
+          completed: result.completed ?? null,
           summary: result.summary ?? null,
           outcome: status,
         },

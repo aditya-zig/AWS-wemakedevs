@@ -35,9 +35,13 @@ async def run_agent(body):
     if not target_url or not objective:
         raise ValueError("targetUrl and objective are required")
 
-    run_id = str(body.get("runId") or uuid.uuid4())
+    run_id = str(body.get("runId") or body.get("auditId") or uuid.uuid4())
     model = str(body.get("model") or os.environ.get("VERIFIAI_CUA_MODEL") or "openai/gpt-5.4-mini")
     provider = str(body.get("provider") or os.environ.get("VERIFIAI_CUA_PROVIDER") or "docker")
+    try:
+        budget_usd = max(0.01, min(float(body.get("budgetUsd") or 0.25), 1.0))
+    except (TypeError, ValueError):
+        budget_usd = 0.25
     container_name = f"verifiai-cua-{run_id[:24]}".replace("_", "-")
     trajectory_dir = ARTIFACT_ROOT / run_id
     trajectory_dir.mkdir(parents=True, exist_ok=True)
@@ -57,6 +61,7 @@ async def run_agent(body):
         "max_retries": 2,
         "trajectory_dir": str(trajectory_dir),
         "verbosity": 30,
+        "max_trajectory_budget": {"max_budget": budget_usd, "raise_error": False, "reset_after_each_run": True},
     }
     model_api_key = os.environ.get("VERIFIAI_CUA_MODEL_API_KEY")
     model_api_base = os.environ.get("VERIFIAI_CUA_MODEL_API_BASE")
@@ -78,8 +83,12 @@ async def run_agent(body):
             f"Objective: {objective}\n"
             "Use the real browser/desktop. Do not claim an action unless you performed it."
         )
-        async for item in agent.run(prompt):
-            responses.append(compact(item))
+        messages = [{"role": "user", "content": prompt}]
+        async for item in agent.run(messages):
+            for output_item in item.get("output", [item]):
+                responses.append(compact(output_item))
+                if len(responses) >= 100:
+                    break
             if len(responses) >= 100:
                 break
         try:
@@ -90,8 +99,31 @@ async def run_agent(body):
         except Exception as error:
             responses.append({"screenshot_error": str(error)})
 
+    final_response = None
+    completed = False
+    for output_item in reversed(responses):
+        if not isinstance(output_item, dict):
+            continue
+        if output_item.get("role") == "assistant":
+            completed = True
+        if output_item.get("type") != "message":
+            continue
+        content = output_item.get("content", [])
+        if isinstance(content, str):
+            text = content.strip()
+            if text:
+                final_response = text[:5000]
+                if output_item.get("role") == "assistant":
+                    break
+        elif isinstance(content, list):
+            texts = [part.get("text", "") for part in content if isinstance(part, dict) and part.get("text")]
+            if texts:
+                final_response = "\n".join(texts)[:5000]
+                if output_item.get("role") == "assistant":
+                    break
     return {
         "ok": True,
+        "completed": completed,
         "engine": "Cua",
         "upstreamRepo": UPSTREAM_REPO,
         "upstreamCommit": UPSTREAM_COMMIT,
@@ -102,8 +134,10 @@ async def run_agent(body):
         "persona": persona or None,
         "durationMs": round((time.time() - started) * 1000),
         "actions": responses,
+        "trajectory": responses,
         "screenshotRefs": screenshot_refs,
         "trajectoryRef": str(trajectory_dir),
+        "finalResponse": final_response,
         "summary": f"Cua ComputerAgent completed {len(responses)} streamed response item(s).",
     }
 
@@ -127,12 +161,13 @@ class Handler(BaseHTTPRequestHandler):
                 "engine": "Cua",
                 "upstreamRepo": UPSTREAM_REPO,
                 "upstreamCommit": UPSTREAM_COMMIT,
+                "version": UPSTREAM_COMMIT[:12],
             })
             return
         self.send_json(404, {"error": "not found"})
 
     def do_POST(self):
-        if self.path != "/run":
+        if self.path not in ("/run", "/execute"):
             self.send_json(404, {"error": "not found"})
             return
         try:

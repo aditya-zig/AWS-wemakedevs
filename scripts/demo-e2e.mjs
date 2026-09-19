@@ -33,11 +33,11 @@ const summary = runs.map((run) => ({
 
 const ok = summary.every((run) =>
   run.engines >= 10 &&
-  run.confirmedFindings >= 3 &&
-  run.fix === 'verified' &&
-  run.targeted === '10/10' &&
-  run.regressions === 0 &&
-  run.prReady === true &&
+  run.confirmedFindings >= 1 &&
+  run.fix === 'not-run' &&
+  run.targeted === '0/0' &&
+  run.regressions === null &&
+  run.prReady === false &&
   run.guardrails === true &&
   run.spendUsd <= run.hardRunCapUsd
 );

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
+import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { SandboxManager } from '../services/sandbox/runtime.mjs';
 import { AdapterRuntime } from '../services/integrations/runtime.mjs';
@@ -34,6 +35,58 @@ test('named external adapters never substitute fake evidence when runtimes are a
   const security = await runtime.execute('security', { id: 'exp-security', requirementId: 'R-2', type: 'security', tool: 'security', description: 'scoped checkout security probe', status: 'pending', attempts: 0, evidenceIds: [] });
   assert.equal(security.status, 'unknown');
   assert.deepEqual(security.evidence, []);
+});
+
+test('Cua adapter never marks a partial real run as pass', async () => {
+  const upstreamCommit = '05f29785b508a4441ec3aa06c556a8e8b26c1d71';
+  const server = http.createServer((req, res) => {
+    res.setHeader('content-type', 'application/json');
+    if (req.url === '/health') {
+      res.end(JSON.stringify({ ok: true, engine: 'Cua', upstreamCommit }));
+      return;
+    }
+    if (req.url === '/run' && req.method === 'POST') {
+      res.end(JSON.stringify({
+        ok: true,
+        completed: false,
+        engine: 'Cua',
+        upstreamCommit,
+        provider: 'docker',
+        model: 'test-model',
+        actions: [{ type: 'computer_call' }],
+        trajectory: [{ type: 'computer_call' }],
+        screenshotRefs: [],
+      }));
+      return;
+    }
+    res.statusCode = 404;
+    res.end(JSON.stringify({ ok: false }));
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address === 'object');
+    const runtime = new AdapterRuntime().register(createCuaAdapter({ serviceUrl: `http://127.0.0.1:${address.port}` }));
+    const result = await runtime.execute('desktop', {
+      id: 'exp-cua-partial',
+      requirementId: 'R-CUA',
+      type: 'browser',
+      tool: 'desktop',
+      description: 'complete checkout',
+      status: 'pending',
+      attempts: 0,
+      evidenceIds: [],
+    }, {
+      target: { baseUrl: 'http://target.local' },
+      environment: { cua: {} },
+    });
+    assert.equal(result.status, 'unknown');
+    assert.equal(result.evidence[0].executed, true);
+    assert.equal(result.evidence[0].payload.completed, false);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
 });
 
 test('legacy flagship helper refuses to fabricate proof without a real target', async () => {

@@ -36,6 +36,18 @@ function selectedHeaders(headers: Headers): Record<string, string> {
   return Object.fromEntries(keep.map((name) => [name, headers.get(name)]).filter(([, value]) => value));
 }
 
+export function computerUseEvidenceOutcome(
+  engine: 'browser-use' | 'cua' | 'generic',
+  result: any,
+  responseOk: boolean,
+  identityOk: boolean,
+): 'pass' | 'fail' | 'unknown' {
+  const executed = responseOk && result?.ok !== false && identityOk;
+  if (!executed) return 'unknown';
+  if (engine === 'cua' && result?.completed !== true) return 'unknown';
+  return result?.successful === false ? 'fail' : 'pass';
+}
+
 export function createWorkerTools(
   brief: AgentWorkerLaunchBrief,
   emit: (event: AgentWorkerEvidenceEvent) => void | Promise<void>,
@@ -489,6 +501,7 @@ export function createWorkerTools(
           const expectedEngine = engine === 'browser-use' ? 'Browser Use' : engine === 'cua' ? 'Cua' : undefined;
           const identityOk = engine === 'generic' || (result?.engine === expectedEngine && result?.upstreamCommit === expectedCommit);
           const executed = response.ok && result?.ok !== false && identityOk;
+          const outcome = computerUseEvidenceOutcome(engine, result, response.ok, identityOk);
           const item: EvidenceInput = {
             kind: 'screenshot',
             source: engine,
@@ -497,7 +510,7 @@ export function createWorkerTools(
               engine: result?.engine ?? engine,
               upstreamRepo: result?.upstreamRepo,
               upstreamCommit: result?.upstreamCommit,
-              outcome: executed ? (result?.successful === false ? 'fail' : 'pass') : 'unknown',
+              outcome,
               status: response.status,
               objective,
               persona,
@@ -506,6 +519,10 @@ export function createWorkerTools(
               actions: Array.isArray(result?.actions) ? result.actions.slice(0, 100) : [],
               urls: Array.isArray(result?.urls) ? result.urls.slice(0, 100) : [],
               finalResult: typeof result?.finalResult === 'string' ? safeText(result.finalResult, 5_000) : undefined,
+              finalResponse: typeof result?.finalResponse === 'string' ? safeText(result.finalResponse, 5_000) : undefined,
+              trajectory: Array.isArray(result?.trajectory) ? result.trajectory.slice(0, 100) : [],
+              trajectoryRef: typeof result?.trajectoryRef === 'string' ? result.trajectoryRef : undefined,
+              completed: result?.completed === true,
               summary: typeof result?.summary === 'string' ? safeText(result.summary, 5_000) : undefined,
               identityVerified: identityOk,
             },

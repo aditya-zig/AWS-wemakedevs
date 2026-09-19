@@ -40,11 +40,12 @@ test('secret redaction removes explicit and pattern-detected credentials recursi
   assert.doesNotMatch(JSON.stringify(value), /sk_test_abcdefghijklmnopqrstuvwxyz/);
 });
 
-test('Deep Audit runs all major engines with failure isolation, nuanced coverage, verified fix, hard guardrails and persistent knowledge', async () => {
+test('legacy Deep Audit runs bounded checks without fabricating repair or verification proof', async () => {
   const root = '/tmp/verifiai-deep-audit-test';
   const knowledgeFile = '/tmp/verifiai-deep-audit-knowledge.json';
   await rm(root, { recursive: true, force: true });
   await rm(knowledgeFile, { force: true });
+
   const service = new DeepAuditService({
     sandboxRoot: root,
     knowledgeFile,
@@ -65,23 +66,25 @@ test('Deep Audit runs all major engines with failure isolation, nuanced coverage
   }
   assert.ok(run.engines.some((engine) => engine.name === 'deployed'));
   assert.ok(run.engines.some((engine) => engine.name === 'installable'));
-  assert.ok(run.findings.some((finding) => finding.id === 'FND-CHECKOUT' && finding.state === 'Confirmed'));
-  assert.ok(run.findings.some((finding) => finding.id === 'FND-LEAKAGE' && finding.state === 'Confirmed'));
-  assert.ok(run.findings.some((finding) => finding.id === 'FND-PERFORMANCE' && finding.state === 'Confirmed'));
-  assert.equal(run.fix.status, 'verified');
-  assert.equal(run.fix.targeted.passed, 10);
-  assert.equal(run.fix.regressionFailures, 0);
-  assert.equal(run.fix.pr.ready, true);
+
+  // Legacy deterministic execution must never invent a verified repair.
+  assert.equal(run.fix.status, 'not-run');
+  assert.equal(run.fix.pr.ready, false);
   assert.equal(run.fix.pr.autoMerge, false);
-  assert.equal(run.fix.proofVideo.redacted, true);
+  assert.equal(run.fix.pr.requiresHumanApproval, true);
+  assert.equal(run.fix.proofVideo, null);
+  assert.match(
+    run.fix.reason,
+    /real executed evidence|real swarm|repair gate remains closed/i
+  );
   assert.equal(run.guardrails.withinGuardrails, true);
   assert.ok(run.guardrails.estimatedRunSpendUsd <= run.guardrails.hardRunCapUsd);
-  assert.match(run.overall, /limitations|Issues confirmed|Verified/i);
+  assert.match(run.overall, /limitations|Issues confirmed|no confirmed issues/i);
   assert.doesNotMatch(JSON.stringify(run), /do-not-leak-me/);
 
   const knowledge = new KnowledgeIndex({ filePath: knowledgeFile });
   const facts = await knowledge.query({ repository: 'acme/checkout', commitSha: 'fixture-1' });
-  assert.ok(facts.length >= 2);
+  assert.ok(facts.length >= 1);
   assert.ok(facts.every((fact) => fact.revalidationRequired === false));
 
   const stale = await knowledge.query({ repository: 'acme/checkout', commitSha: 'fixture-2' });
@@ -91,10 +94,11 @@ test('Deep Audit runs all major engines with failure isolation, nuanced coverage
   assert.equal(steered.type, 'steering.completed');
   assert.equal(steered.bounded, true);
 
-  const pr = service.createPrPackage(run.runId);
-  assert.equal(pr.ready, true);
-  assert.equal(pr.autoMerge, false);
-  assert.equal(pr.requiresHumanApproval, true);
+  // A PR cannot be generated from an unverified legacy repair.
+  assert.throws(
+    () => service.createPrPackage(run.runId),
+    /fix is not verified|PR gate remains closed/i
+  );
 
   await rm(root, { recursive: true, force: true });
   await rm(knowledgeFile, { force: true });
@@ -129,11 +133,12 @@ test('budget guard hard-stops spend and request overages', () => {
   assert.throws(() => cost.request(1), /request guard blocked/i);
 });
 
-test('Deep Audit HTTP path supports audit, live steering, and verified PR gate end to end', async () => {
+test('legacy Deep Audit HTTP path supports audit and steering while keeping unverified PR gate closed', async () => {
   const root = '/tmp/verifiai-deep-audit-http';
   const knowledgeFile = '/tmp/verifiai-deep-audit-http-knowledge.json';
   await rm(root, { recursive: true, force: true });
   await rm(knowledgeFile, { force: true });
+
   const deepAudit = new DeepAuditService({
     sandboxRoot: root,
     knowledgeFile,
@@ -154,23 +159,24 @@ test('Deep Audit HTTP path supports audit, live steering, and verified PR gate e
     assert.equal(auditResponse.status, 200);
     const { run } = await auditResponse.json();
     assert.equal(run.defaultMode, true);
-    assert.equal(run.fix.status, 'verified');
+    assert.equal(run.fix.status, 'not-run');
+    assert.equal(run.fix.pr.ready, false);
+    assert.equal(run.fix.proofVideo, null);
 
     const steerResponse = await fetch(`${base}/api/demo/deep-audit/${encodeURIComponent(run.runId)}/steer`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ instruction: 'Investigate duplicate-payment recovery deeper' })
     });
+
     assert.equal(steerResponse.status, 200);
     const { event } = await steerResponse.json();
     assert.equal(event.type, 'steering.completed');
 
     const prResponse = await fetch(`${base}/api/demo/deep-audit/${encodeURIComponent(run.runId)}/pr`, { method: 'POST' });
-    assert.equal(prResponse.status, 200);
-    const { pr } = await prResponse.json();
-    assert.equal(pr.ready, true);
-    assert.equal(pr.autoMerge, false);
-    assert.equal(pr.requiresHumanApproval, true);
+    assert.equal(prResponse.status, 409);
+    const prBody = await prResponse.json();
+    assert.match(prBody.error, /fix is not verified|PR gate remains closed/i);
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     await rm(root, { recursive: true, force: true });

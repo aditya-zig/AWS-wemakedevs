@@ -1,0 +1,168 @@
+name: PR2 Cua Proof
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  verify:
+    if: github.event_name != 'pull_request' || github.event.pull_request.number == 2
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-audit --no-fund
+      - run: npm run check
+
+  cua-proof:
+    if: github.event_name != 'pull_request' || github.event.pull_request.number == 2
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DIRECT_CUA_MODEL_KEY: ${{ secrets.VERIFIAI_CUA_MODEL_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+      OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build real pinned Cua runner
+        run: docker build -f services/cua-runner/Dockerfile -t verifiai-cua:pr2 .
+
+      - name: Start real Cua Docker service
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/cua-artifacts"
+          docker run -d --name verifiai-cua \
+            -p 127.0.0.1:8791:8791 \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$RUNNER_TEMP/cua-artifacts:/artifacts" \
+            --add-host host.docker.internal:host-gateway \
+            -e PORT=8791 \
+            -e VERIFIAI_CUA_PROVIDER=docker \
+            verifiai-cua:pr2
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:8791/health > /tmp/cua-health.json; then
+              cat /tmp/cua-health.json
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs verifiai-cua
+          exit 1
+
+      - name: Select real model credential
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${DIRECT_CUA_MODEL_KEY:-}" ]; then
+            echo "CUA_MODEL_KEY=$DIRECT_CUA_MODEL_KEY" >> "$GITHUB_ENV"
+            echo "CUA_MODEL_BASE=${{ vars.VERIFIAI_CUA_MODEL_API_BASE || 'https://openrouter.ai/api/v1' }}" >> "$GITHUB_ENV"
+            echo "CUA_MODEL=${{ vars.VERIFIAI_CUA_MODEL || 'openai/gpt-4o-mini' }}" >> "$GITHUB_ENV"
+            echo "Selected explicitly configured Cua model credential."
+          elif [ -n "${OPENROUTER_API_KEY:-}" ]; then
+            echo "CUA_MODEL_KEY=$OPENROUTER_API_KEY" >> "$GITHUB_ENV"
+            echo "CUA_MODEL_BASE=https://openrouter.ai/api/v1" >> "$GITHUB_ENV"
+            echo "CUA_MODEL=${{ vars.VERIFIAI_CUA_MODEL || 'openai/gpt-4o-mini' }}" >> "$GITHUB_ENV"
+            echo "Selected OpenRouter."
+          elif [ -n "${NVIDIA_API_KEY:-}" ]; then
+            echo "CUA_MODEL_KEY=$NVIDIA_API_KEY" >> "$GITHUB_ENV"
+            echo "CUA_MODEL_BASE=https://integrate.api.nvidia.com/v1" >> "$GITHUB_ENV"
+            echo "CUA_MODEL=openai/qwen/qwen3.5-122b-a10b" >> "$GITHUB_ENV"
+            echo "Selected NVIDIA NIM."
+          elif [ -n "${OLLAMA_API_KEY:-}" ]; then
+            echo "CUA_MODEL_KEY=$OLLAMA_API_KEY" >> "$GITHUB_ENV"
+            echo "CUA_MODEL_BASE=https://ollama.com/v1" >> "$GITHUB_ENV"
+            echo "CUA_MODEL=openai/qwen3-vl:235b-cloud" >> "$GITHUB_ENV"
+            echo "Selected Ollama Cloud."
+          elif [ -n "${LLM_API_KEY:-}" ]; then
+            echo "CUA_MODEL_KEY=$LLM_API_KEY" >> "$GITHUB_ENV"
+            echo "CUA_MODEL_BASE=${{ vars.VERIFIAI_CUA_MODEL_API_BASE || 'https://openrouter.ai/api/v1' }}" >> "$GITHUB_ENV"
+            echo "CUA_MODEL=${{ vars.VERIFIAI_CUA_MODEL || 'openai/gpt-4o-mini' }}" >> "$GITHUB_ENV"
+            echo "Selected generic configured LLM credential."
+          else
+            echo "No VERIFIAI_CUA_MODEL_API_KEY, OPENROUTER_API_KEY, NVIDIA_API_KEY, OLLAMA_API_KEY, or LLM_API_KEY repository secret is configured."
+            exit 2
+          fi
+
+      - name: Restart Cua service with selected model credential
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker rm -f verifiai-cua
+          docker run -d --name verifiai-cua \
+            -p 127.0.0.1:8791:8791 \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$RUNNER_TEMP/cua-artifacts:/artifacts" \
+            --add-host host.docker.internal:host-gateway \
+            -e PORT=8791 \
+            -e VERIFIAI_CUA_PROVIDER=docker \
+            -e VERIFIAI_CUA_MODEL="$CUA_MODEL" \
+            -e VERIFIAI_CUA_MODEL_API_BASE="$CUA_MODEL_BASE" \
+            -e VERIFIAI_CUA_MODEL_API_KEY="$CUA_MODEL_KEY" \
+            verifiai-cua:pr2
+          for i in {1..30}; do
+            curl -fsS http://127.0.0.1:8791/health && exit 0
+            sleep 2
+          done
+          docker logs verifiai-cua
+          exit 1
+
+      - name: Run one real Cua journey
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/cua-request.json <<'JSON'
+          {
+            "runId": "github-pr2-live-cua",
+            "targetUrl": "https://example.com",
+            "objective": "Open the target in the real desktop/browser, verify that the page heading says Example Domain, and finish with a concise success statement.",
+            "persona": "normal user",
+            "provider": "docker",
+            "budgetUsd": 0.05
+          }
+          JSON
+          curl --fail-with-body --max-time 300 \
+            -H 'content-type: application/json' \
+            -d @/tmp/cua-request.json \
+            http://127.0.0.1:8791/run \
+            -o /tmp/cua-response.json
+          jq 'del(.actions[]?.content)' /tmp/cua-response.json
+          jq -e '
+            .ok == true
+            and .completed == true
+            and .engine == "Cua"
+            and .upstreamCommit == "05f29785b508a4441ec3aa06c556a8e8b26c1d71"
+            and (.trajectory | type == "array" and length > 0)
+            and (.screenshotRefs | type == "array" and length > 0)
+            and (.trajectoryRef | type == "string" and length > 0)
+          ' /tmp/cua-response.json
+
+      - name: Collect proof
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          mkdir -p "$RUNNER_TEMP/cua-proof"
+          cp /tmp/cua-health.json "$RUNNER_TEMP/cua-proof/health.json" 2>/dev/null || true
+          cp /tmp/cua-request.json "$RUNNER_TEMP/cua-proof/request.json" 2>/dev/null || true
+          cp /tmp/cua-response.json "$RUNNER_TEMP/cua-proof/response.json" 2>/dev/null || true
+          cp -a "$RUNNER_TEMP/cua-artifacts/." "$RUNNER_TEMP/cua-proof/artifacts/" 2>/dev/null || true
+          docker logs verifiai-cua > "$RUNNER_TEMP/cua-proof/cua-runner.log" 2>&1 || true
+          docker inspect verifiai-cua > "$RUNNER_TEMP/cua-proof/docker-inspect.json" 2>/dev/null || true
+          find "$RUNNER_TEMP/cua-proof" -maxdepth 4 -type f -print | sort
+
+      - name: Upload Cua trajectory and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr2-cua-proof
+          path: ${{ runner.temp }}/cua-proof
+          if-no-files-found: error
