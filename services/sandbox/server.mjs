@@ -25,5 +25,5 @@ export function createSandboxServer({ root } = {}) {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const port = Number(process.env.SANDBOX_PORT ?? 8790);
   const { server } = createSandboxServer();
-  server.listen(port, () => console.log(`VERIFIAI sandbox fallback listening on :${port}`));
+  server.listen(port, () => console.log(`VERIFAI sandbox fallback listening on :${port}`));
 }
