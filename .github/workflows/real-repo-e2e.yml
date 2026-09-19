@@ -166,14 +166,20 @@ jobs:
           set +e
           failed=0
           if [ -n "${VERIFIAI_E2E_TASK_ARN:-}" ] && [ -n "${VERIFIAI_ECS_CLUSTER:-}" ]; then
-            aws ecs stop-task \
-              --cluster "$VERIFIAI_ECS_CLUSTER" \
-              --task "$VERIFIAI_E2E_TASK_ARN" \
-              --reason "VERIFAI GitHub workflow finalizer" >/dev/null || failed=1
+            task_status="$(aws ecs describe-tasks --cluster "$VERIFIAI_ECS_CLUSTER" --tasks "$VERIFIAI_E2E_TASK_ARN" --query 'tasks[0].lastStatus' --output text 2>/dev/null || true)"
+            if [ -n "$task_status" ] && [ "$task_status" != "None" ] && [ "$task_status" != "STOPPED" ]; then
+              aws ecs stop-task \
+                --cluster "$VERIFIAI_ECS_CLUSTER" \
+                --task "$VERIFIAI_E2E_TASK_ARN" \
+                --reason "VERIFAI GitHub workflow finalizer" >/dev/null || failed=1
+            fi
           fi
           if [ -n "${VERIFIAI_E2E_TASK_DEFINITION_ARN:-}" ]; then
-            aws ecs deregister-task-definition \
-              --task-definition "$VERIFIAI_E2E_TASK_DEFINITION_ARN" >/dev/null || failed=1
+            definition_status="$(aws ecs describe-task-definition --task-definition "$VERIFIAI_E2E_TASK_DEFINITION_ARN" --query 'taskDefinition.status' --output text 2>/dev/null || true)"
+            if [ "$definition_status" = "ACTIVE" ]; then
+              aws ecs deregister-task-definition \
+                --task-definition "$VERIFIAI_E2E_TASK_DEFINITION_ARN" >/dev/null || failed=1
+            fi
           fi
           exit "$failed"
 
