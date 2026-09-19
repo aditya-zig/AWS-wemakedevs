@@ -35,6 +35,14 @@ Parameters:
   LatestAmiId:
     Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
     Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+  EnablePublicHttpsEgress:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: Explicit bootstrap/model-API escape hatch. Broad HTTPS is never enabled implicitly.
+
+Conditions:
+  PublicHttpsEgressEnabled: !Equals [!Ref EnablePublicHttpsEgress, 'true']
 
 Resources:
   EngineHostSecurityGroup:
@@ -43,11 +51,14 @@ Resources:
       GroupDescription: VERIFIAI real external engines reachable only by AgentCore/auditor workers
       VpcId: !Ref VpcId
       SecurityGroupEgress:
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          CidrIp: 0.0.0.0/0
-          Description: HTTPS for pinned source/image pulls and model APIs
+        - !If
+          - PublicHttpsEgressEnabled
+          - IpProtocol: tcp
+            FromPort: 443
+            ToPort: 443
+            CidrIp: 0.0.0.0/0
+            Description: Explicitly enabled HTTPS for pinned source/image pulls and model APIs
+          - !Ref AWS::NoValue
         - IpProtocol: udp
           FromPort: 53
           ToPort: 53
