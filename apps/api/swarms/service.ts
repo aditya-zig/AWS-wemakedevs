@@ -103,18 +103,18 @@ export class LiveAuditService {
 
     const orchestrator = new EphemeralStrandsOrchestrator(planner, launcher, {
       maxConcurrency: Number(this.env.VERIFIAI_MAX_CONCURRENT_WORKERS ?? 4),
-      maxRetries: Number(this.env.VERIFIAI_MAX_WORKER_RETRIES ?? 1),
+      maxRetries: Math.min(1, Math.max(0, Number(this.env.VERIFIAI_MAX_WORKER_RETRIES ?? 1))),
       maxDynamicTasks: Number(this.env.VERIFIAI_MAX_DYNAMIC_WORKERS ?? 12),
       workerConstraints: {
         timeoutMs: Number(this.env.VERIFIAI_WORKER_TIMEOUT_MS ?? 120_000),
         maxToolCalls: Number(this.env.VERIFIAI_MAX_TOOL_CALLS ?? 24),
         maxEvidenceItems: Number(this.env.VERIFIAI_MAX_EVIDENCE_ITEMS ?? 100),
         networkAllowlist: policy.networkAllowlist,
-        maxEstimatedSpendUsd: Number(this.env.VERIFIAI_MAX_WORKER_SPEND_USD ?? 0.4),
+        maxEstimatedSpendUsd: Math.min(0.4, Math.max(0, Number(this.env.VERIFIAI_MAX_WORKER_SPEND_USD ?? 0.4))),
       },
       guardrails: {
-        hardRunSpendUsd: Number(this.env.VERIFIAI_HARD_RUN_SPEND_USD ?? 2.5),
-        maxAuditMs: Number(this.env.VERIFIAI_MAX_AUDIT_MS ?? 15 * 60_000),
+        hardRunSpendUsd: Math.min(2.5, Math.max(0, Number(this.env.VERIFIAI_HARD_RUN_SPEND_USD ?? 2.5))),
+        maxAuditMs: Math.min(20 * 60_000, Math.max(1_000, Number(this.env.VERIFIAI_MAX_AUDIT_MS ?? 15 * 60_000))),
       },
     });
     const auditId = `AUD-${randomUUID()}`;
