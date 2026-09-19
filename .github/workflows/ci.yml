@@ -13,4 +13,9 @@ jobs:
         with:
           node-version: '22'
       - run: npm install --no-audit --no-fund
-      - run: npm run check
+      - name: Verify pull request auth/unit integration
+        if: github.event_name == 'pull_request'
+        run: npm run external:policy && npm run typecheck && npm test
+      - name: Verify full main suite
+        if: github.event_name != 'pull_request'
+        run: npm run check
