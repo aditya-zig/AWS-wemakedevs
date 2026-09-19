@@ -32,7 +32,7 @@ Resources:
         EncryptionType: AES256
       LifecyclePolicy:
         LifecyclePolicyText: |
-          {"rules":[{"rulePriority":1,"description":"Expire old VERIFAI target images","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":20},"action":{"type":"expire"}}]}
+          {"rules":[{"rulePriority":1,"description":"Expire old VERIFAI target images","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":3},"action":{"type":"expire"}}]}
 
   VerificationCluster:
     Type: AWS::ECS::Cluster
@@ -42,7 +42,7 @@ Resources:
   TargetLogs:
     Type: AWS::Logs::LogGroup
     Properties:
-      RetentionInDays: 3
+      RetentionInDays: 7
 
   AuditorSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -246,7 +246,7 @@ Resources:
   CodeBuildLogs:
     Type: AWS::Logs::LogGroup
     Properties:
-      RetentionInDays: 3
+      RetentionInDays: 7
 
   CodeBuildRole:
     Type: AWS::IAM::Role
