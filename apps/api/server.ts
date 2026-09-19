@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import type { GitHubOAuthService, RepositoryImportService } from '../../packages/core/github/index.js';
+import type { GoogleOAuthService } from '../../packages/core/google/index.js';
 import { buildVerificationPlan, parseRequirements } from '../../packages/core/planning/index.js';
 import type { Experiment } from '../../packages/contracts/src/index.js';
 import type { RunService } from './runs/service.js';
@@ -9,6 +10,7 @@ import type { LiveRepairService } from './repairs/service.js';
 
 export interface ApiDependencies {
   oauth: GitHubOAuthService;
+  googleOauth?: GoogleOAuthService;
   importer: RepositoryImportService;
   runs?: RunService;
   swarms?: LiveAuditService;
@@ -41,8 +43,11 @@ function cookies(request: IncomingMessage): Record<string, string> {
     return index < 0 ? [part, ''] : [part.slice(0, index), decodeURIComponent(part.slice(index + 1))];
   }));
 }
+function cookieSessionId(request: IncomingMessage): string | undefined {
+  return cookies(request)[SESSION_COOKIE] || undefined;
+}
 function sessionId(request: IncomingMessage, url?: URL, body?: any): string | undefined {
-  return cookies(request)[SESSION_COOKIE] || url?.searchParams.get('sessionId') || (typeof body?.sessionId === 'string' ? body.sessionId : undefined) || undefined;
+  return cookieSessionId(request) || url?.searchParams.get('sessionId') || (typeof body?.sessionId === 'string' ? body.sessionId : undefined) || undefined;
 }
 function setSessionCookie(response: ServerResponse, value: string, secure: boolean): void {
   response.setHeader('set-cookie', `${SESSION_COOKIE}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400${secure ? '; Secure' : ''}`);
@@ -56,9 +61,9 @@ function redirect(response: ServerResponse, location: string): void {
   response.setHeader('cache-control', 'no-store');
   response.end();
 }
-function authenticatedWebUrl(webUrl: string): string {
+function authenticatedWebUrl(webUrl: string, provider: 'github' | 'google'): string {
   const target = new URL(webUrl);
-  target.searchParams.set('auth', 'github');
+  target.searchParams.set('auth', provider);
   target.hash = '/repository';
   return target.toString();
 }
@@ -88,27 +93,62 @@ export function createApiServer(deps: ApiDependencies): Server {
       if (request.method === 'GET' && url.pathname === '/health') return respond(response, 200, { ok: true, service: 'verifiai-api' });
 
       if (request.method === 'GET' && url.pathname === '/api/auth/github') {
-        const id = sessionId(request, url) || randomUUID();
+        const id = cookieSessionId(request) || randomUUID();
         const { authorizationUrl } = deps.oauth.createAuthorizationUrl(id);
         setSessionCookie(response, id, secureCookies);
         return redirect(response, authorizationUrl);
       }
       if (request.method === 'GET' && url.pathname === '/api/auth/github/callback') {
-        const id = sessionId(request, url);
+        const id = cookieSessionId(request);
         const code = url.searchParams.get('code');
         const state = url.searchParams.get('state');
         if (!id || !code || !state) return respond(response, 400, { error: 'GitHub callback is missing session, code or state' });
         await deps.oauth.handleCallback(id, code, state);
-        return redirect(response, authenticatedWebUrl(webUrl));
+        return redirect(response, authenticatedWebUrl(webUrl, 'github'));
+      }
+      if (request.method === 'GET' && url.pathname === '/api/auth/google') {
+        if (!deps.googleOauth) return respond(response, 503, { error: 'Google OAuth is not configured' });
+        const id = cookieSessionId(request) || randomUUID();
+        const { authorizationUrl } = deps.googleOauth.createAuthorizationUrl(id);
+        setSessionCookie(response, id, secureCookies);
+        return redirect(response, authorizationUrl);
+      }
+      if (request.method === 'GET' && url.pathname === '/api/auth/google/callback') {
+        if (!deps.googleOauth) return respond(response, 503, { error: 'Google OAuth is not configured' });
+        const id = cookieSessionId(request);
+        const code = url.searchParams.get('code');
+        const state = url.searchParams.get('state');
+        if (!id || !code || !state) return respond(response, 400, { error: 'Google callback is missing session, code or state' });
+        await deps.googleOauth.handleCallback(id, code, state);
+        return redirect(response, authenticatedWebUrl(webUrl, 'google'));
       }
       if (request.method === 'GET' && url.pathname === '/api/auth/me') {
-        const id = sessionId(request, url);
-        if (!id || !deps.oauth.isAuthenticated(id)) return respond(response, 401, { authenticated: false });
-        return respond(response, 200, { authenticated: true, provider: 'github', user: await deps.oauth.getAuthenticatedUser(id) });
+        response.setHeader('cache-control', 'no-store');
+        const id = cookieSessionId(request);
+        if (!id) return respond(response, 401, { authenticated: false });
+        if (deps.googleOauth?.isAuthenticated(id)) {
+          return respond(response, 200, {
+            authenticated: true,
+            provider: 'google',
+            githubConnected: deps.oauth.isAuthenticated(id),
+            user: deps.googleOauth.getAuthenticatedUser(id),
+          });
+        }
+        if (!deps.oauth.isAuthenticated(id)) return respond(response, 401, { authenticated: false });
+        return respond(response, 200, {
+          authenticated: true,
+          provider: 'github',
+          githubConnected: true,
+          user: await deps.oauth.getAuthenticatedUser(id),
+        });
       }
       if (request.method === 'POST' && url.pathname === '/api/auth/logout') {
-        const id = sessionId(request, url);
-        if (id) deps.oauth.logout(id);
+        response.setHeader('cache-control', 'no-store');
+        const id = cookieSessionId(request);
+        if (id) {
+          deps.oauth.logout(id);
+          deps.googleOauth?.logout(id);
+        }
         clearSessionCookie(response, secureCookies);
         return respond(response, 200, { authenticated: false });
       }
