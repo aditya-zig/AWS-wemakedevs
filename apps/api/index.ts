@@ -29,4 +29,4 @@ const importer = new RepositoryImportService(vault, transport, new JsonFileProje
 const runs = new RunService(new VerificationOrchestrator(new Map()));
 const swarms = new LiveAuditService();
 const server = createApiServer({ oauth, importer, runs, swarms, webUrl, secureCookies });
-server.listen(port, '0.0.0.0', () => console.log(`VERIFIAI API listening on :${port}`));
+server.listen(port, '0.0.0.0', () => console.log(`VERIFAI API listening on :${port}`));
