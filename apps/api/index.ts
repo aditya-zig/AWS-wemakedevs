@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import { createApiServer } from './server.js';
 import { RunService } from './runs/service.js';
 import { CredentialVault, FetchGitHubTransport, GitHubOAuthService, JsonFileProjectStore, RepositoryImportService } from '../../packages/core/github/index.js';
+import { FetchGoogleOAuthTransport, GoogleOAuthService } from '../../packages/core/google/index.js';
 import { VerificationOrchestrator } from '../../packages/core/orchestrator/index.js';
 import { LiveAuditService } from './swarms/service.js';
 import { LiveRepairService } from './repairs/service.js';
@@ -24,11 +25,17 @@ const oauth = new GitHubOAuthService({
   callbackUrl: required('GITHUB_CALLBACK_URL'),
   stateSecret: required('VERIFIAI_STATE_SECRET'),
 }, transport, vault);
+const googleOauth = new GoogleOAuthService({
+  clientId: required('GOOGLE_CLIENT_ID'),
+  clientSecret: required('GOOGLE_CLIENT_SECRET'),
+  callbackUrl: required('GOOGLE_CALLBACK_URL'),
+  stateSecret: required('VERIFIAI_STATE_SECRET'),
+}, new FetchGoogleOAuthTransport());
 const importer = new RepositoryImportService(vault, transport, new JsonFileProjectStore(join(dataDir, 'projects.json')));
 
 // Adapter-owned tools are injected here during integration. Missing tools resolve to UNKNOWN, never false PASS.
 const runs = new RunService(new VerificationOrchestrator(new Map()));
 const swarms = new LiveAuditService();
 const repairs = new LiveRepairService();
-const server = createApiServer({ oauth, importer, runs, swarms, repairs, webUrl, secureCookies });
+const server = createApiServer({ oauth, googleOauth, importer, runs, swarms, repairs, webUrl, secureCookies });
 server.listen(port, '0.0.0.0', () => console.log(`VERIFAI API listening on :${port}`));
