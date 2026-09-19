@@ -1,0 +1,78 @@
+name: PR3 Live Configuration Preflight
+
+on:
+  push:
+    branches:
+      - aditya/a04-a12-truthful-release
+    paths:
+      - .github/workflows/pr3-live-preflight.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    env:
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      VERIFIAI_AGENTCORE_RUNTIME_ARN: ${{ secrets.VERIFIAI_AGENTCORE_RUNTIME_ARN }}
+      VERIFIAI_AGENTCORE_MODEL_PROFILE: ${{ secrets.VERIFIAI_AGENTCORE_MODEL_PROFILE }}
+      VERIFIAI_ENGINE_SECRET_ARN: ${{ secrets.VERIFIAI_ENGINE_SECRET_ARN }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+      OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+      VERIFIAI_VPC_ID: ${{ vars.VERIFIAI_VPC_ID }}
+      VERIFIAI_TARGET_SUBNET_IDS: ${{ vars.VERIFIAI_TARGET_SUBNET_IDS }}
+      VERIFIAI_ENGINE_SUBNET_ID: ${{ vars.VERIFIAI_ENGINE_SUBNET_ID }}
+      VERIFIAI_MODEL_SECRET_ARN: ${{ vars.VERIFIAI_MODEL_SECRET_ARN }}
+      VERIFIAI_MODEL_PROVIDER: ${{ vars.VERIFIAI_MODEL_PROVIDER }}
+      VERIFIAI_MODEL_ID: ${{ vars.VERIFIAI_MODEL_ID }}
+    steps:
+      - name: Report live-gate configuration without exposing values
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          required=(
+            AWS_ROLE_ARN
+            VERIFIAI_VPC_ID
+            VERIFIAI_TARGET_SUBNET_IDS
+            VERIFIAI_ENGINE_SUBNET_ID
+            VERIFIAI_MODEL_SECRET_ARN
+            VERIFIAI_AGENTCORE_MODEL_PROFILE
+            VERIFIAI_ENGINE_SECRET_ARN
+            VERIFIAI_MODEL_PROVIDER
+            VERIFIAI_MODEL_ID
+          )
+          for name in "${required[@]}"; do
+            [ -n "${!name:-}" ] || missing+=("$name")
+          done
+
+          case "${VERIFIAI_MODEL_PROVIDER:-}" in
+            openrouter) [ -n "${OPENROUTER_API_KEY:-}" ] || missing+=("OPENROUTER_API_KEY") ;;
+            nvidia) [ -n "${NVIDIA_API_KEY:-}" ] || missing+=("NVIDIA_API_KEY") ;;
+            ollama-cloud) [ -n "${OLLAMA_API_KEY:-}" ] || missing+=("OLLAMA_API_KEY") ;;
+            "") ;;
+            *) missing+=("SUPPORTED_MODEL_PROVIDER(openrouter|nvidia|ollama-cloud)") ;;
+          esac
+
+          {
+            echo "## VERIFIAI live configuration preflight"
+            if (( ${#missing[@]} == 0 )); then
+              echo "All required repository secrets/variables for the A04-A12 live path are present."
+            else
+              echo "Missing configuration:"
+              printf -- "- %s\n" "${missing[@]}"
+            fi
+            if [ -n "${VERIFIAI_AGENTCORE_RUNTIME_ARN:-}" ]; then
+              echo "- Existing AgentCore runtime ARN: configured"
+            else
+              echo "- Existing AgentCore runtime ARN: not configured (deploy-agentcore can create one)"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if (( ${#missing[@]} )); then
+            printf 'Missing live-gate configuration: %s\n' "${missing[*]}"
+            exit 2
+          fi
