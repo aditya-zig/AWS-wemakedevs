@@ -14,7 +14,7 @@ jobs:
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
       VERIFIAI_AGENTCORE_RUNTIME_ARN: ${{ secrets.VERIFIAI_AGENTCORE_RUNTIME_ARN }}
       VERIFIAI_AGENTCORE_MODEL_PROFILE: ${{ secrets.VERIFIAI_AGENTCORE_MODEL_PROFILE }}
-      AWS_REGION: ${{ vars.AWS_REGION || 'us-west-2' }}
+      AWS_REGION: ${{ vars.AWS_REGION || 'ap-south-1' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -53,4 +53,5 @@ jobs:
         run: npm run verify:agentcore
 
       - name: Acceptance status
-        run: echo "A04 LIVE ACCEPTANCE: real AgentCore lifecycle completed."
+        run: |
+          echo "A04 LIVE ACCEPTANCE: real AgentCore lifecycle completed."

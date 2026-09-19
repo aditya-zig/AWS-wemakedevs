@@ -115,7 +115,7 @@ export function createMiroFishAdapter({
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         simulation_id: simulationId,
-        parallel_profile_count: Math.max(1, Math.min(Number(config.parallelProfileCount ?? 5), 16)),
+        parallel_profile_count: Math.max(1, Math.min(Number(config.parallelProfileCount ?? 5), 5)),
         force_regenerate: config.forceRegenerate === true,
       }),
     });

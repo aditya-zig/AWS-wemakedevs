@@ -13,7 +13,7 @@ test('public site contains the complete VERIFAI marketing story', () => {
   for (const id of ['product','demo','how','workflow','security','developers']) {
     assert.match(html, new RegExp(`id=["']${id}["']`), `missing #${id}`);
   }
-  assert.match(html, /Start Deep Audit/);
+  assert.match(html, /Start Verification/);
   assert.match(html, /Evidence-backed/);
   assert.match(html, /Know if your software actually works\./);
   assert.match(html, /Your users should not be your first real-world test\./);
@@ -46,4 +46,15 @@ test('responsive rules explicitly redesign mobile workflow layouts', () => {
   assert.match(css, /\.hero-graph/);
   assert.match(css, /grid-template-columns:\s*1fr/);
   assert.match(css, /overflow-x:\s*hidden/);
+});
+
+
+test('live audit UI never turns worker completion or prototype controls into fake verification', () => {
+  assert.doesNotMatch(js, /task\.state==='completed'\?'Verified'/);
+  assert.doesNotMatch(js, /Payment-timeout experiment replayed\./);
+  assert.match(js, /report\?\.findingState\|\|'Completed'/);
+  assert.match(js, /Preview only — run Deep Audit for executed payment-timeout evidence\./);
+  assert.doesNotMatch(html, /Pull request #82 created from verifiai\/fix-payment-timeout/);
+  assert.match(html, /Prototype control only — a real PR unlocks only after independent verification\./);
+  assert.match(html, /Illustrative product preview — run Deep Audit for executed evidence\./);
 });

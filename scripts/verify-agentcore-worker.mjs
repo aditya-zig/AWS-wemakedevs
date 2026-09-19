@@ -6,7 +6,7 @@ const modelProfileId = process.env.VERIFIAI_AGENTCORE_MODEL_PROFILE;
 if (!runtimeArn) throw new Error('VERIFIAI_AGENTCORE_RUNTIME_ARN is required');
 if (!modelProfileId) throw new Error('VERIFIAI_AGENTCORE_MODEL_PROFILE is required');
 
-const region = process.env.AWS_REGION || 'us-west-2';
+const region = process.env.AWS_REGION || 'ap-south-1';
 const auditId = `AUD-LIVE-${Date.now()}`;
 const workerId = `security-secrets-live-${Date.now()}`;
 const events = [];

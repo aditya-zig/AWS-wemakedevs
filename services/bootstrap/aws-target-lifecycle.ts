@@ -16,6 +16,7 @@ import {
   DescribeTaskDefinitionCommand,
   DescribeTasksCommand,
   ECSClient,
+  ListTasksCommand,
   RegisterTaskDefinitionCommand,
   RunTaskCommand,
   StopTaskCommand,
@@ -182,6 +183,15 @@ export class AwsTargetLifecycle {
     }));
     const imageDigest = image?.imageDetails?.[0]?.imageDigest;
     if (!imageDigest) throw new AwsTargetLifecycleError('image', 'ECR image was not found after a successful CodeBuild');
+
+    const activeTargets = await this.ecs.send(new ListTasksCommand({
+      cluster: this.config.ecsCluster,
+      startedBy: 'verifiai',
+      maxResults: 1,
+    }));
+    if ((activeTargets?.taskArns ?? []).length > 0) {
+      throw new AwsTargetLifecycleError('launch', 'Fargate concurrency guard blocked launch: max 1 VERIFAI managed target task');
+    }
 
     const base = await this.ecs.send(new DescribeTaskDefinitionCommand({ taskDefinition: this.config.taskDefinition }));
     const baseTask = base?.taskDefinition;

@@ -58,7 +58,7 @@ async def run_agent(body):
     agent_kwargs = {
         "model": model,
         "tools": [],
-        "max_retries": 2,
+        "max_retries": 1,
         "trajectory_dir": str(trajectory_dir),
         "verbosity": 30,
         "max_trajectory_budget": {"max_budget": budget_usd, "raise_error": False, "reset_after_each_run": True},

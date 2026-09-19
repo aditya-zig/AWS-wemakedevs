@@ -37,6 +37,9 @@ interface InternalRecord {
   auditId: string;
   mode: 'local' | 'agentcore';
   startedAt: string;
+  repository: AuditRepositoryFacts;
+  modelProfileId: string;
+  networkAllowlist: string[];
   orchestrator: EphemeralStrandsOrchestrator;
   result?: AuditRunResult;
   error?: string;
@@ -89,7 +92,7 @@ export class LiveAuditService {
         })
       : new AgentCoreWorkerLauncher({
           defaultRuntime: {
-            region: this.env.AWS_REGION ?? 'us-west-2',
+            region: this.env.AWS_REGION ?? 'ap-south-1',
             runtimeArn: this.env.VERIFIAI_AGENTCORE_RUNTIME_ARN ?? '',
           },
         });
@@ -100,18 +103,18 @@ export class LiveAuditService {
 
     const orchestrator = new EphemeralStrandsOrchestrator(planner, launcher, {
       maxConcurrency: Number(this.env.VERIFIAI_MAX_CONCURRENT_WORKERS ?? 4),
-      maxRetries: Number(this.env.VERIFIAI_MAX_WORKER_RETRIES ?? 1),
+      maxRetries: Math.min(1, Math.max(0, Number(this.env.VERIFIAI_MAX_WORKER_RETRIES ?? 1))),
       maxDynamicTasks: Number(this.env.VERIFIAI_MAX_DYNAMIC_WORKERS ?? 12),
       workerConstraints: {
         timeoutMs: Number(this.env.VERIFIAI_WORKER_TIMEOUT_MS ?? 120_000),
         maxToolCalls: Number(this.env.VERIFIAI_MAX_TOOL_CALLS ?? 24),
         maxEvidenceItems: Number(this.env.VERIFIAI_MAX_EVIDENCE_ITEMS ?? 100),
         networkAllowlist: policy.networkAllowlist,
-        maxEstimatedSpendUsd: Number(this.env.VERIFIAI_MAX_WORKER_SPEND_USD ?? 0.4),
+        maxEstimatedSpendUsd: Math.min(0.4, Math.max(0, Number(this.env.VERIFIAI_MAX_WORKER_SPEND_USD ?? 0.4))),
       },
       guardrails: {
-        hardRunSpendUsd: Number(this.env.VERIFIAI_HARD_RUN_SPEND_USD ?? 2.5),
-        maxAuditMs: Number(this.env.VERIFIAI_MAX_AUDIT_MS ?? 15 * 60_000),
+        hardRunSpendUsd: Math.min(2.5, Math.max(0, Number(this.env.VERIFIAI_HARD_RUN_SPEND_USD ?? 2.5))),
+        maxAuditMs: Math.min(20 * 60_000, Math.max(1_000, Number(this.env.VERIFIAI_MAX_AUDIT_MS ?? 15 * 60_000))),
       },
     });
     const auditId = `AUD-${randomUUID()}`;
@@ -119,6 +122,9 @@ export class LiveAuditService {
       auditId,
       mode,
       startedAt: this.now(),
+      repository: input.repository,
+      modelProfileId,
+      networkAllowlist: [...policy.networkAllowlist],
       orchestrator,
       run: Promise.resolve(),
     };
@@ -144,6 +150,17 @@ export class LiveAuditService {
   get(auditId: string): LiveAuditRecord | undefined {
     const record = this.records.get(auditId);
     return record ? this.publicRecord(record) : undefined;
+  }
+
+  repairContext(auditId: string): { repository: AuditRepositoryFacts; modelProfileId: string; networkAllowlist: string[]; completed: boolean } | undefined {
+    const record = this.records.get(auditId);
+    if (!record) return undefined;
+    return {
+      repository: record.repository,
+      modelProfileId: record.modelProfileId,
+      networkAllowlist: [...record.networkAllowlist],
+      completed: Boolean(record.result),
+    };
   }
 
   steer(auditId: string, objective: string): LiveAuditRecord {

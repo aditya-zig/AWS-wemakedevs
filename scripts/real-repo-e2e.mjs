@@ -1,7 +1,8 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { AwsTargetLifecycle } from '../dist/services/bootstrap/aws-target-lifecycle.js';
 import { LiveAuditService } from '../dist/apps/api/swarms/service.js';
+import { assessRealRepoAcceptance } from '../dist/services/release/real-repo-acceptance.js';
 
 function required(name) {
   const value = process.env[name];
@@ -51,7 +52,7 @@ async function main() {
   const commitSha = await resolveCommit(candidate.fullName, candidate.branch);
   const auditTag = `e2e-${candidate.id}-${commitSha.slice(0, 10)}-${Date.now()}`;
   const lifecycle = new AwsTargetLifecycle({
-    region: process.env.AWS_REGION || 'us-west-2',
+    region: process.env.AWS_REGION || 'ap-south-1',
     codeBuildProject: required('VERIFIAI_CODEBUILD_PROJECT'),
     ecrRepository: required('VERIFIAI_ECR_REPOSITORY'),
     ecrRegistry: required('VERIFIAI_ECR_REGISTRY'),
@@ -76,6 +77,7 @@ async function main() {
     architecture: 'Strands -> AgentCore workers -> CodeBuild/ECR/Fargate target',
     target: null,
     audit: null,
+    acceptance: null,
     cleanup: { attempted: false, succeeded: false },
   };
 
@@ -89,6 +91,9 @@ async function main() {
       healthPath: candidate.healthPath,
     });
     record.target = target;
+    if (process.env.GITHUB_ENV) {
+      await appendFile(process.env.GITHUB_ENV, `VERIFIAI_E2E_TASK_ARN=${target.taskArn}\nVERIFIAI_E2E_TASK_DEFINITION_ARN=${target.taskDefinitionArn}\n`);
+    }
 
     const service = new LiveAuditService({
       env: {
@@ -115,7 +120,8 @@ async function main() {
       objective: candidate.objective,
     });
 
-    const deadline = Date.now() + Number(process.env.VERIFIAI_E2E_TIMEOUT_MS || 20 * 60_000);
+    const configuredTtlMs = Math.min(Number(process.env.VERIFIAI_E2E_TIMEOUT_MS || 20 * 60_000), 20 * 60_000);
+    const deadline = new Date(target.launchedAt).getTime() + configuredTtlMs;
     let current = started;
     while (!current.state.finished && !current.error) {
       if (Date.now() >= deadline) {
@@ -129,11 +135,12 @@ async function main() {
     if (current.error) throw new Error(current.error);
     record.audit = current;
 
-    if (!current.result || current.result.outcome === 'failed') {
-      throw new Error(`Real-repo audit did not complete successfully: ${current.result?.outcome || 'missing result'}`);
+    if (!current.result) {
+      throw new Error('Real-repo audit did not return a final result');
     }
-    if ((current.state.evidence?.length || 0) === 0) {
-      throw new Error('Real-repo audit returned zero executed evidence items');
+    record.acceptance = assessRealRepoAcceptance(current.result);
+    if (!record.acceptance.ok) {
+      throw new Error(`Real-repo Deep Audit acceptance failed: ${record.acceptance.failures.join('; ')}`);
     }
   } finally {
     if (target) {
@@ -159,6 +166,7 @@ async function main() {
       evidence: record.audit?.state?.evidence?.length || 0,
       workers: record.audit?.state?.plan?.tasks?.length || 0,
       spend: record.audit?.state?.guardrails?.estimatedSpendUsd || 0,
+      acceptance: record.acceptance,
       cleanup: record.cleanup,
     }, null, 2));
   }
