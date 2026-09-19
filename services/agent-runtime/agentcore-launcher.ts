@@ -153,7 +153,7 @@ export class AgentCoreWorkerLauncher implements AgentWorkerLauncher {
 
   constructor(private readonly options: AgentCoreWorkerLauncherOptions) {
     const first = options.defaultRuntime ?? Object.values(options.runtimeByRole ?? {})[0];
-    const region = first?.region ?? process.env.AWS_REGION ?? 'us-west-2';
+    const region = first?.region ?? process.env.AWS_REGION ?? 'ap-south-1';
     this.client = options.client ?? new BedrockAgentCoreClient({ region });
     this.now = options.now ?? (() => new Date().toISOString());
   }
