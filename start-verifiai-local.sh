@@ -17,5 +17,5 @@ sleep 2
 curl -s http://localhost:8787/health || echo "API not ready yet, check logs/api.log"
 curl -s -o /dev/null -w "WEB %{http_code}\n" http://localhost:4173/
 echo "Done. Real-agent audit example:"
-echo "curl -X POST http://localhost:8787/api/audits -H 'content-type: application/json' -d '{\"repository\":{\"provider\":\"github\",\"fullName\":\"aditya-zig/AWS-wemakedevs\",\"url\":\"https://github.com/aditya-zig/AWS-wemakedevs\",\"branch\":\"main\",\"commitSha\":\"0d2fd0f9d99ada8b4f8ec963e8b143b43accd451\"},\"target\":null}'"
+echo "curl -X POST http://localhost:8787/api/audits -H 'content-type: application/json' -d '{\"repository\":{\"provider\":\"github\",\"fullName\":\"aditya-zig/AWS-wemakedevs\",\"url\":\"https://github.com/aditya-zig/AWS-wemakedevs\",\"branch\":\"main\"},\"target\":{\"id\":\"local-web\",\"url\":\"http://localhost:4173\",\"environment\":\"shared-observation\",\"immutable\":true}}'"
 echo "Note: isolated Docker workers need Docker daemon running. Without it they report Incomplete truthfully."
