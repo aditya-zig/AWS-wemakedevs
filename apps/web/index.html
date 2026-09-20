@@ -786,7 +786,7 @@ pull_request: human approval required</code></pre>
   function renderLogin() {
     return `${appHeader()}<div class="auth-wrap"><div class="auth-card">
       ${brand()}<h2>Start verifying</h2><p class="muted">Connect your repository and run the first evidence-backed verification.</p>
-      <div class="auth-buttons"><button class="btn primary" data-action="github-oauth">Continue with GitHub</button><button class="btn" data-action="toast" data-message="Google OAuth is not connected yet.">Continue with Google</button></div>
+      <div class="auth-buttons"><button class="btn primary" data-action="github-oauth">Continue with GitHub</button><button class="btn" data-action="google-oauth">Continue with Google</button></div>
       <div class="divider">or</div>
       <label class="label" for="email">Email</label><input id="email" class="input" type="email" placeholder="you@company.com" style="margin-top:7px" />
       <button class="btn" style="width:100%;margin-top:10px" data-action="toast" data-message="Email sign-in is not enabled yet.">Continue with email</button>
