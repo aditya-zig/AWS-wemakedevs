@@ -4,6 +4,13 @@
 set -e
 cd "$(dirname "$0")"
 set -a; source .env; set +a
+export GITHUB_CLIENT_ID="${GITHUB_CLIENT_ID:-local-github-client}"
+export GITHUB_CLIENT_SECRET="${GITHUB_CLIENT_SECRET:-local-github-secret}"
+export GITHUB_CALLBACK_URL="${GITHUB_CALLBACK_URL:-http://localhost:8787/api/auth/github/callback}"
+export GOOGLE_CLIENT_ID="${GOOGLE_CLIENT_ID:-local-google-client}"
+export GOOGLE_CLIENT_SECRET="${GOOGLE_CLIENT_SECRET:-local-google-secret}"
+export GOOGLE_CALLBACK_URL="${GOOGLE_CALLBACK_URL:-http://localhost:8787/api/auth/google/callback}"
+export VERIFIAI_STATE_SECRET="${VERIFIAI_STATE_SECRET:-local-verifiai-state-secret}"
 export VERIFIAI_LOCAL_WORKER_MODE="${VERIFIAI_LOCAL_WORKER_MODE:-process}"
 mkdir -p data logs
 pkill -f "dist/apps/api/index.js" 2>/dev/null || true
