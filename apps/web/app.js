@@ -1,5 +1,7 @@
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+const API_BASE = window.VERIFIAI_API_BASE || ((location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? 'http://localhost:8787' : location.origin);
+const apiUrl = path => `${API_BASE.replace(/\/$/, '')}${path}`;
 let runResult=null,auditRunning=false,toastTimer;
 const messages=['Discovering application surfaces…','Inspecting authentication…','Testing checkout like a real user…','Scanning exposed secrets…','Simulating a new customer…','Injecting 8s payment latency…','Checking API invariants…','Cross-checking evidence…'];
 
@@ -32,7 +34,7 @@ function swarmResultCard(audit,error=''){
   host.innerHTML=`<div class="result"><span>${esc(audit?.mode||'real swarm').toUpperCase()}</span><b>${confirmed} confirmed issues · ${state?.plan?.tasks?.length||0} workers planned</b><p>${esc(audit?.result?.outcome ? 'Audit '+audit.result.outcome : state?.finished ? 'Audit finished' : 'Audit running')}</p><p><strong>${state?.activeWorkerIds?.length||0}</strong> active · <strong>${state?.evidence?.length||0}</strong> evidence · estimated spend <strong>${Number(state?.guardrails?.estimatedSpendUsd||0).toFixed(2)}</strong> / ${Number(state?.guardrails?.hardRunSpendUsd||0).toFixed(2)}</p></div>`;
 }
 async function fetchSwarm(auditId){
-  const response=await fetch(`/api/audits/${encodeURIComponent(auditId)}/swarm`,{headers:{accept:'application/json'}});
+  const response=await fetch(apiUrl(`/api/audits/${encodeURIComponent(auditId)}/swarm`),{headers:{accept:'application/json'}});
   const payload=await response.json();if(!response.ok)throw new Error(payload.error||`HTTP ${response.status}`);
   return payload.audit;
 }
@@ -42,7 +44,7 @@ async function runFlagshipAudit({drawer=true}={}){
   let i=1;const timer=reducedMotion?null:setInterval(()=>{if(i<3)setProgress(i++)},900);
   try{
     const request=auditPayload();
-    const response=await fetch('/api/audits',{method:'POST',headers:{accept:'application/json','content-type':'application/json'},body:JSON.stringify(request)});
+    const response=await fetch(apiUrl('/api/audits'),{method:'POST',headers:{accept:'application/json','content-type':'application/json'},body:JSON.stringify(request)});
     const payload=await response.json();if(!response.ok)throw new Error(payload.error||`HTTP ${response.status}`);
     runResult=payload.audit;applySwarm(runResult);swarmResultCard(runResult);
     while(!runResult.state?.finished&&!runResult.error){
@@ -99,10 +101,10 @@ function scrollMotion(){let tick=false;const nav=$('#nav');const update=()=>{nav
 function cycleEngines(){if(reducedMotion)return;const nodes=$$('[data-engine]');let i=0;setInterval(()=>{nodes.forEach((n,j)=>n.classList.toggle('active',j===i));i=(i+1)%nodes.length},800)}
 function cards(){$$('.engine-card').forEach(card=>$('.expand',card)?.addEventListener('click',()=>card.classList.toggle('expanded')))}
 function reportTabs(){$$('.report-tab').forEach(tab=>tab.addEventListener('click',()=>{$$('.report-tab').forEach(t=>t.classList.remove('active'));tab.classList.add('active');$('#reportBody')?.animate?.([{opacity:.35,transform:'translateY(7px)'},{opacity:1,transform:'translateY(0)'}],{duration:reducedMotion?1:220,easing:'cubic-bezier(.2,.8,.2,1)'})}))}
-function steer(){$('#steerForm')?.addEventListener('submit',async e=>{e.preventDefault();const input=$('#steerInput'),resp=$('#chatResponse'),host=$('#branchCards');if(!input||!resp||!host)return;if(!runResult?.auditId){resp.textContent='Run the real Deep Audit first so steering has live evidence to work from.';return}resp.textContent='Queueing a bounded investigator inside the live swarm…';try{const r=await fetch(`/api/audits/${encodeURIComponent(runResult.auditId)}/steer`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({objective:input.value})});const p=await r.json();if(!r.ok)throw new Error(p.error||`HTTP ${r.status}`);runResult=p.audit;applySwarm(runResult);resp.textContent='Investigator queued. It will use the current audit evidence and scoped tools.';const node=document.createElement('div');node.innerHTML=`<b>${esc(input.value||'Additional check')}</b><small>Queued investigator</small>`;host.append(node);toast('Investigator added to live swarm')}catch(err){resp.textContent=`Steering incomplete: ${String(err?.message??err)}`}})}
+function steer(){$('#steerForm')?.addEventListener('submit',async e=>{e.preventDefault();const input=$('#steerInput'),resp=$('#chatResponse'),host=$('#branchCards');if(!input||!resp||!host)return;if(!runResult?.auditId){resp.textContent='Run the real Deep Audit first so steering has live evidence to work from.';return}resp.textContent='Queueing a bounded investigator inside the live swarm…';try{const r=await fetch(apiUrl(`/api/audits/${encodeURIComponent(runResult.auditId)}/steer`),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({objective:input.value})});const p=await r.json();if(!r.ok)throw new Error(p.error||`HTTP ${r.status}`);runResult=p.audit;applySwarm(runResult);resp.textContent='Investigator queued. It will use the current audit evidence and scoped tools.';const node=document.createElement('div');node.innerHTML=`<b>${esc(input.value||'Additional check')}</b><small>Queued investigator</small>`;host.append(node);toast('Investigator added to live swarm')}catch(err){resp.textContent=`Steering incomplete: ${String(err?.message??err)}`}})}
 function actions(){$$('[data-audit-trigger]').forEach(b=>b.addEventListener('click',openDrawer));$('#closeDrawer')?.addEventListener('click',closeDrawer);$('#backdrop')?.addEventListener('click',closeDrawer);$('#drawerRun')?.addEventListener('click',()=>runFlagshipAudit({drawer:false}));$('#watchAudit')?.addEventListener('click',()=>{$('#live-audit')?.scrollIntoView({behavior:reducedMotion?'auto':'smooth'});setTimeout(()=>runFlagshipAudit({drawer:false}),reducedMotion?0:420)});$('#runAuditFromConsole')?.addEventListener('click',()=>runFlagshipAudit({drawer:false}));$('#runDeepAudit')?.addEventListener('click',()=>runFlagshipAudit({drawer:false}));$('#createPr')?.addEventListener('click',()=>toast('PR stays locked until the real Repair + independent verification pipeline returns a PR-ready package.'));$('#payDemo')?.addEventListener('click',()=>toast('Payment-timeout experiment replayed.'));addEventListener('keydown',e=>{if(e.key==='Escape')closeDrawer()})}
 function mobile(){$('#menu')?.addEventListener('click',()=>{const b=$('#menu'),n=$('#navlinks');const open=b.getAttribute('aria-expanded')==='true';b.setAttribute('aria-expanded',String(!open));n?.classList.toggle('mobile-open',!open)})}
-function agentCycle(){if(reducedMotion)return;let idx=0;setInterval(()=>{if(runResult?.auditId||runResult?.runId)return;const rows=$('#agentList li');if(!rows.length)return;rows.forEach((r,i)=>{const dot=$('i',r),s=$('small',r);if(i===idx){dot.className='';s.textContent='Running'}else if(i<idx){dot.className='ok';s.textContent='Verified'}});idx=(idx+1)%rows.length},1350)}
+function agentCycle(){if(reducedMotion)return;let idx=0;setInterval(()=>{if(runResult?.auditId||runResult?.runId)return;const rows=$$('#agentList li');if(!rows.length)return;rows.forEach((r,i)=>{const dot=$('i',r),s=$('small',r);if(i===idx){dot.className='';s.textContent='Running'}else if(i<idx){dot.className='ok';s.textContent='Verified'}});idx=(idx+1)%rows.length},1350)}
 
 reveal();counters();scrollMotion();cycleEngines();cards();reportTabs();steer();actions();mobile();agentCycle();typeStatus();rotateLine();
 

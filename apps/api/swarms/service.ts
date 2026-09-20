@@ -5,6 +5,7 @@ import type {
 } from '../../../packages/contracts/src/index.js';
 import { AgentCoreWorkerLauncher } from '../../../services/agent-runtime/agentcore-launcher.js';
 import { DockerWorkerLauncher } from '../../../services/agent-runtime/docker-launcher.js';
+import { LocalProcessWorkerLauncher } from '../../../services/agent-runtime/local-process-launcher.js';
 import { buildSpecialistPolicy } from '../../../services/agents/specialist-policy.js';
 import {
   createStrandsPlanningAgent,
@@ -79,14 +80,16 @@ export class LiveAuditService {
     });
 
     const launcher = mode === 'local'
-      ? new DockerWorkerLauncher({
-          image: this.env.VERIFIAI_LOCAL_WORKER_IMAGE,
-          cpus: Number(this.env.VERIFIAI_LOCAL_WORKER_CPUS ?? 1),
-          memory: this.env.VERIFIAI_LOCAL_WORKER_MEMORY ?? '1024m',
-          pidsLimit: Number(this.env.VERIFIAI_LOCAL_WORKER_PIDS ?? 256),
-          network: this.env.VERIFIAI_LOCAL_WORKER_NETWORK ?? 'bridge',
-          env: this.env,
-        })
+      ? this.env.VERIFIAI_LOCAL_WORKER_MODE === 'process'
+        ? new LocalProcessWorkerLauncher({ env: this.env })
+        : new DockerWorkerLauncher({
+            image: this.env.VERIFIAI_LOCAL_WORKER_IMAGE,
+            cpus: Number(this.env.VERIFIAI_LOCAL_WORKER_CPUS ?? 1),
+            memory: this.env.VERIFIAI_LOCAL_WORKER_MEMORY ?? '1024m',
+            pidsLimit: Number(this.env.VERIFIAI_LOCAL_WORKER_PIDS ?? 256),
+            network: this.env.VERIFIAI_LOCAL_WORKER_NETWORK ?? 'bridge',
+            env: this.env,
+          })
       : new AgentCoreWorkerLauncher({
           defaultRuntime: {
             region: this.env.AWS_REGION ?? 'us-west-2',
