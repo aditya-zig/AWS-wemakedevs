@@ -1062,6 +1062,14 @@ pull_request: human approval required</code></pre>
       }
       if (!meResponse.ok) throw new Error(`Authentication check failed (HTTP ${meResponse.status})`);
       const me = await meResponse.json();
+      const productionAuthOnly = location.hostname !== 'localhost' && location.hostname !== '127.0.0.1';
+      if (productionAuthOnly) {
+        const provider = me.provider === 'github' ? 'GitHub' : 'Google';
+        const identity = me.user?.name || me.user?.login || me.user?.email || 'Signed-in user';
+        list.innerHTML = `<div class="repo-row"><div><div class="repo-name">Signed in with ${provider}</div><div class="repo-meta"><span>${escapeHtml(identity)}</span><span>Authentication is live. Repository functionality is not enabled in this production demo.</span></div></div><button class="btn sm" data-action="logout">Log out</button></div>`;
+        search?.closest('div')?.setAttribute('hidden', '');
+        return;
+      }
       if (!me.githubConnected) {
         list.innerHTML = '<div class="repo-row"><div><div class="repo-name">Connect GitHub to load your repositories</div><div class="repo-meta"><span>You are signed in, but repository access still needs GitHub.</span></div></div><button class="btn primary sm" data-action="github-oauth">Connect GitHub</button></div>';
         return;
