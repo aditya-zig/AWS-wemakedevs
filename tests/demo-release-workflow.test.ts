@@ -23,7 +23,8 @@ test('A11/A12 real-repo contract targets Twenty and Cal.diy only', async () => {
   assert.equal(cal.containerPort, 3000);
   assert.equal(cal.healthPath, '/auth/login');
   assert.equal(cal.sidecars.length, 1);
-  assert.equal(cal.sidecars[0].image, 'postgres:16-alpine');
+  assert.equal(cal.sidecars[0].sourceImage, 'public.ecr.aws/docker/library/postgres:16-alpine');
+  assert.equal(cal.sidecars[0].mirrorToTargetEcr, true);
   assert.equal(cal.sidecars[0].environment.POSTGRES_HOST_AUTH_METHOD, 'trust');
 
   const serialized = JSON.stringify(candidates);
