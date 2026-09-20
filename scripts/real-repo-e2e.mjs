@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { AwsTargetLifecycle } from '../dist/services/bootstrap/aws-target-lifecycle.js';
@@ -12,6 +13,44 @@ function required(name) {
 
 function csv(name) {
   return required(name).split(',').map((value) => value.trim()).filter(Boolean);
+}
+
+function validateCandidate(candidate) {
+  const requiredStrings = ['id', 'fullName', 'branch', 'dockerfile', 'healthPath', 'objective'];
+  for (const name of requiredStrings) {
+    if (typeof candidate?.[name] !== 'string' || !candidate[name].trim()) {
+      throw new Error(`INCOMPLETE_BOOTSTRAP: repository contract is missing ${name}`);
+    }
+  }
+  if (!Number.isInteger(candidate.containerPort) || candidate.containerPort < 1 || candidate.containerPort > 65535) {
+    throw new Error('INCOMPLETE_BOOTSTRAP: repository contract has no valid containerPort');
+  }
+  if (!candidate.healthPath.startsWith('/')) {
+    throw new Error('INCOMPLETE_BOOTSTRAP: healthPath must be an absolute HTTP path');
+  }
+  if (candidate.sidecars && !Array.isArray(candidate.sidecars)) {
+    throw new Error('INCOMPLETE_BOOTSTRAP: sidecars must be an array');
+  }
+}
+
+function materializeRuntimeEnvironment(candidate) {
+  const environment = { ...(candidate.runtimeEnvironment ?? {}) };
+  for (const name of candidate.generateSecrets ?? []) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+      throw new Error(`INCOMPLETE_BOOTSTRAP: invalid generated secret name ${name}`);
+    }
+    const bytes = name === 'CALENDSO_ENCRYPTION_KEY' ? 24 : 32;
+    environment[name] = randomBytes(bytes).toString('base64');
+  }
+  return environment;
+}
+
+function incompleteDetail(error) {
+  return {
+    phase: typeof error?.phase === 'string' ? error.phase : 'audit',
+    reason: String(error?.message || error),
+    truthfulState: 'Incomplete',
+  };
 }
 
 async function resolveCommit(fullName, branch) {
@@ -30,9 +69,11 @@ async function resolveCommit(fullName, branch) {
 
 async function main() {
   const candidates = JSON.parse(await readFile(new URL('../config/e2e-repositories.json', import.meta.url), 'utf8'));
-  const requested = process.argv[2] || process.env.VERIFIAI_E2E_REPO || 'owasp-juice-shop';
+  const requested = process.argv[2] || process.env.VERIFIAI_E2E_REPO || 'twenty';
   const candidate = candidates.find((item) => item.id === requested);
   if (!candidate) throw new Error(`Unknown E2E repository '${requested}'. Valid: ${candidates.map((item) => item.id).join(', ')}`);
+  validateCandidate(candidate);
+  const runtimeEnvironment = materializeRuntimeEnvironment(candidate);
 
   for (const name of [
     'VERIFIAI_CODEBUILD_PROJECT',
@@ -75,10 +116,21 @@ async function main() {
     commitSha,
     startedAt: new Date().toISOString(),
     architecture: 'Strands -> AgentCore workers -> CodeBuild/ECR/Fargate target',
+    status: 'Running',
+    bootstrap: {
+      source: 'explicit-upstream-inspected-contract',
+      dockerfile: candidate.dockerfile,
+      buildContext: candidate.buildContext ?? '.',
+      buildTarget: candidate.buildTarget ?? null,
+      containerPort: candidate.containerPort,
+      healthPath: candidate.healthPath,
+      sidecars: (candidate.sidecars ?? []).map(({ name, image }) => ({ name, image })),
+    },
     target: null,
     audit: null,
     acceptance: null,
-    cleanup: { attempted: false, succeeded: false },
+    incomplete: null,
+    cleanup: { required: false, attempted: false, succeeded: true },
   };
 
   try {
@@ -88,8 +140,14 @@ async function main() {
       commitSha,
       imageTag: auditTag,
       dockerfile: candidate.dockerfile,
+      buildContext: candidate.buildContext,
+      buildTarget: candidate.buildTarget,
+      buildArgs: candidate.buildArgs,
+      environment: runtimeEnvironment,
+      sidecars: candidate.sidecars,
       healthPath: candidate.healthPath,
     });
+    record.cleanup = { required: true, attempted: false, succeeded: false };
     record.target = target;
     if (process.env.GITHUB_ENV) {
       await appendFile(process.env.GITHUB_ENV, `VERIFIAI_E2E_TASK_ARN=${target.taskArn}\nVERIFIAI_E2E_TASK_DEFINITION_ARN=${target.taskDefinitionArn}\n`);
@@ -142,6 +200,11 @@ async function main() {
     if (!record.acceptance.ok) {
       throw new Error(`Real-repo Deep Audit acceptance failed: ${record.acceptance.failures.join('; ')}`);
     }
+    record.status = 'Completed';
+  } catch (error) {
+    record.status = 'Incomplete';
+    record.incomplete = incompleteDetail(error);
+    throw error;
   } finally {
     if (target) {
       record.cleanup.attempted = true;
@@ -171,7 +234,7 @@ async function main() {
     }, null, 2));
   }
 
-  if (!record.cleanup.succeeded) throw new Error('Fargate target cleanup did not complete');
+  if (record.cleanup.required && !record.cleanup.succeeded) throw new Error('Fargate target cleanup did not complete');
 }
 
 main().catch((error) => {
