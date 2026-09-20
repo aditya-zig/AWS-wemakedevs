@@ -50,7 +50,8 @@
     "sidecars": [
       {
         "name": "database",
-        "image": "postgres:16-alpine",
+        "sourceImage": "public.ecr.aws/docker/library/postgres:16-alpine",
+        "mirrorToTargetEcr": true,
         "essential": true,
         "environment": {
           "POSTGRES_USER": "postgres",
