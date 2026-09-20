@@ -46,7 +46,9 @@ export interface AwsTargetLifecycleConfig {
 
 export interface AwsTargetSidecar {
   name: string;
-  image: string;
+  image?: string;
+  sourceImage?: string;
+  mirrorToTargetEcr?: boolean;
   essential?: boolean;
   environment?: Record<string, string>;
 }
@@ -154,6 +156,19 @@ export function buildArbitraryRepoBuildspec(request: AwsTargetRequest, config: A
     shell(contextPath),
   ].join(' ');
 
+  const sidecarMirrorCommands = (request.sidecars ?? []).flatMap((sidecar) => {
+    if (!sidecar.mirrorToTargetEcr) return [];
+    if (!/^[A-Za-z0-9_-]{1,255}$/.test(sidecar.name) || !sidecar.sourceImage?.trim()) {
+      throw new AwsTargetLifecycleError('build', `VERIFIAI_UNSUPPORTED: mirrored sidecar '${sidecar.name}' requires a valid name and sourceImage`);
+    }
+    const mirrored = `${config.ecrRegistry}/${config.ecrRepository}:${request.imageTag}-sidecar-${sidecar.name}`;
+    return [
+      `      - docker pull ${shell(sidecar.sourceImage)}`,
+      `      - docker tag ${shell(sidecar.sourceImage)} ${shell(mirrored)}`,
+      `      - docker push ${shell(mirrored)}`,
+    ];
+  });
+
   return [
     'version: 0.2',
     'phases:',
@@ -169,6 +184,7 @@ export function buildArbitraryRepoBuildspec(request: AwsTargetRequest, config: A
     ...(buildContext === '.' ? [] : [`      - test -d ${shell(contextPath)} || (echo "VERIFIAI_UNSUPPORTED: Docker build context not found at ${buildContext}" >&2; exit 42)`]),
     `      - ${dockerBuild}`,
     `      - docker push ${shell(imageUri)}`,
+    ...sidecarMirrorCommands,
     'artifacts:',
     '  files: []',
   ].join('\n');
@@ -273,7 +289,10 @@ export class AwsTargetLifecycle {
       if (sidecar.name === this.config.containerName || sidecarNames.has(sidecar.name)) {
         throw new AwsTargetLifecycleError('launch', `VERIFIAI_UNSUPPORTED: duplicate sidecar name '${sidecar.name}'`);
       }
-      if (!sidecar.image?.trim()) {
+      const sidecarImage = sidecar.mirrorToTargetEcr
+        ? `${this.config.ecrRegistry}/${this.config.ecrRepository}:${request.imageTag}-sidecar-${sidecar.name}`
+        : sidecar.image?.trim() || sidecar.sourceImage?.trim();
+      if (!sidecarImage) {
         throw new AwsTargetLifecycleError('launch', `VERIFIAI_UNSUPPORTED: sidecar '${sidecar.name}' has no image`);
       }
       sidecarNames.add(sidecar.name);
@@ -288,7 +307,7 @@ export class AwsTargetLifecycle {
         : undefined;
       return {
         name: sidecar.name,
-        image: sidecar.image,
+        image: sidecarImage,
         essential: sidecar.essential ?? true,
         environment: mergeEnvironment(undefined, sidecar.environment),
         ...(logConfiguration ? { logConfiguration } : {}),
