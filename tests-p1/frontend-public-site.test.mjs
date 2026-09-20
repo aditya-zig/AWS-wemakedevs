@@ -49,6 +49,13 @@ test('responsive rules explicitly redesign mobile workflow layouts', () => {
 });
 
 
+test('Deep Audit drawer stays hidden off-canvas until explicitly opened', () => {
+  assert.match(html, /\.drawer\s*\{[^}]*position:\s*fixed[^}]*visibility:\s*hidden/s);
+  assert.match(html, /\.drawer\.open\s*\{[^}]*visibility:\s*visible/s);
+  assert.match(html, /\.drawer\s*>\s*aside\s*\{[^}]*transform:\s*translateX\(100%\)/s);
+  assert.match(html, /\.drawer\.open\s*>\s*aside\s*\{[^}]*transform:\s*translateX\(0\)/s);
+});
+
 test('Deep Audit UI is live-state driven and contains no hard-coded demo verdicts', () => {
   assert.doesNotMatch(js, /task\.state==='completed'\?'Verified'/);
   assert.match(js, /report\?\.findingState\|\|'Completed'/);
