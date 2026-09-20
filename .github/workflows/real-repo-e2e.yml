@@ -6,12 +6,11 @@ on:
       repository:
         description: Real repository candidate
         required: true
-        default: owasp-juice-shop
+        default: twenty
         type: choice
         options:
-          - owasp-juice-shop
-          - docker-welcome
-          - traefik-whoami
+          - twenty
+          - cal-diy
           - all
       repeat_count:
         description: Clean repetitions per selected repository
@@ -141,7 +140,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${{ inputs.repository }}" = "all" ]; then
-            repositories=(owasp-juice-shop docker-welcome traefik-whoami)
+            repositories=(twenty cal-diy)
           else
             repositories=("${{ inputs.repository }}")
           fi
