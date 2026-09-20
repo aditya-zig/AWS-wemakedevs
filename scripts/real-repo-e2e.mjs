@@ -124,7 +124,11 @@ async function main() {
       buildTarget: candidate.buildTarget ?? null,
       containerPort: candidate.containerPort,
       healthPath: candidate.healthPath,
-      sidecars: (candidate.sidecars ?? []).map(({ name, image }) => ({ name, image })),
+      sidecars: (candidate.sidecars ?? []).map(({ name, image, sourceImage, mirrorToTargetEcr }) => ({
+        name,
+        image: image ?? sourceImage ?? null,
+        mirroredToTargetEcr: mirrorToTargetEcr === true,
+      })),
     },
     target: null,
     audit: null,
