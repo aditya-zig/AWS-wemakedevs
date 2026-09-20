@@ -47,11 +47,18 @@ test('A05 buildspec supports an inspected upstream Dockerfile target and build a
     buildContext: '.',
     buildTarget: 'twenty-app-dev',
     buildArgs: { DATABASE_URL: 'postgresql://postgres@127.0.0.1:5432/calendso' },
+    sidecars: [{
+      name: 'database',
+      sourceImage: 'public.ecr.aws/docker/library/postgres:16-alpine',
+      mirrorToTargetEcr: true,
+    }],
   }, config);
 
   assert.match(buildspec, /packages\/twenty-docker\/twenty\/Dockerfile/);
   assert.match(buildspec, /--target 'twenty-app-dev'/);
   assert.match(buildspec, /--build-arg 'DATABASE_URL=postgresql:\/\/postgres@127\.0\.0\.1:5432\/calendso'/);
+  assert.match(buildspec, /docker pull 'public\.ecr\.aws\/docker\/library\/postgres:16-alpine'/);
+  assert.match(buildspec, /audit-deadbeef-sidecar-database/);
   assert.match(buildspec, /'\/tmp\/verifiai-target'$/m);
   assert.throws(
     () => buildArbitraryRepoBuildspec({ ...request, buildContext: '../outside' }, config),
