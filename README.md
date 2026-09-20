@@ -8,9 +8,13 @@
 
 VERIFAI turns a GitHub repository into an evidence-backed verification run: it discovers how the software starts, plans a Deep Audit, launches isolated AI workers and real verification engines, records what actually happened, investigates conflicting signals, and re-verifies repairs before they become PR-ready.
 
-> **Demo media:** no real VERIFAI product recording is committed yet. This README deliberately does not embed synthetic footage, placeholder binaries, or fake evidence. Use the [45–60 second real-recording guide](docs/demo-video.md); once real footage exists, the hero can be activated with <code>assets/verifai-intro.gif</code> and <code>assets/verifai-intro.mp4</code>.
+### Product demo
 
-[Demo recording guide](docs/demo-video.md) · [How it works](#how-it-works) · [Quickstart](#quickstart) · [Architecture](#architecture)
+The clip below is the **same MP4 embedded in the VERIFAI frontend**. It shows the product experience; it is not presented as A11/A12 AWS execution evidence.
+
+### [▶ Watch the VERIFAI product demo →](assets/verifai-product-demo.mp4)
+
+[Watch demo](assets/verifai-product-demo.mp4) · [How it works](#how-it-works) · [Quickstart](#quickstart) · [Architecture](#architecture) · [Recording guide](docs/demo-video.md)
 
 [![VERIFAI CI](https://github.com/aditya-zig/AWS-wemakedevs/actions/workflows/ci.yml/badge.svg)](https://github.com/aditya-zig/AWS-wemakedevs/actions/workflows/ci.yml)
 ![Node.js](https://img.shields.io/badge/Node.js-22%2B-339933?logo=node.js&logoColor=white)
@@ -176,7 +180,7 @@ Pinned repositories, revisions and license boundaries are in [<code>config/exter
 - **A11 live AWS run:** no accepted credentialed Twenty/Cal.diy CodeBuild → ECR → Fargate → AgentCore/engine proof yet.
 - **A12 repeated demo hardening:** blocked until A11 produces real cloud artifacts and teardown evidence.
 - **Every external engine running locally:** not claimed; heavy or unavailable lanes may truthfully finish Incomplete.
-- **Real demo GIF/MP4:** not committed yet.
+- **Frontend product clip:** committed as `assets/verifai-product-demo.mp4`; it is UI/product media, not accepted A11/A12 execution proof.
 - **PR #7 / PR #8 behavior:** both are open and unmerged, so this README does not present their changes as current <code>main</code> behavior.
 
 A green CI run proves repository checks. It does **not** prove a live AWS audit or every external engine executed.
@@ -481,7 +485,7 @@ AWS-wemakedevs/
 - Corrected Twenty/Cal.diy support is in open PR #7, not <code>main</code>.
 - Local startup/routing improvements are in open PR #8, not <code>main</code>.
 - Heavy local engines are intentionally optional; unavailable lanes should finish Incomplete.
-- No real demo GIF/MP4 is committed until it is captured from an actual run.
+- `assets/verifai-product-demo.mp4` is the same clip used by the frontend. A separate real audit recording is still required before claiming A11/A12 execution proof.
 - The repository currently has **no root license file**. Do not assume reuse rights beyond what GitHub and individual upstream dependencies explicitly grant.
 
 ---

@@ -1,15 +1,15 @@
 # VERIFAI demo recording guide
 
-No synthetic or placeholder footage should be committed as product evidence.
+The repository includes `assets/verifai-product-demo.mp4`, extracted from the exact base64 MP4 embedded in `apps/web/index.html`. It is the frontend product clip and may be used in the README as product media.
 
-Record the demo only from a real VERIFAI run. After review, the final assets should be:
+Do **not** treat that clip as executed verification evidence. The final audit-evidence recording should still come from a real VERIFAI run. After review, use separate assets such as:
 
 ~~~text
-assets/verifai-intro.gif
-assets/verifai-intro.mp4
+assets/verifai-audit-demo.gif
+assets/verifai-audit-demo.mp4
 ~~~
 
-Do not add either file—or README links to them—until the footage came from the real product and the findings/evidence visible on screen came from the run being shown.
+Only the real audit recording may be used to demonstrate A11/A12 execution evidence, findings or repair proof.
 
 ## Target
 
@@ -55,12 +55,12 @@ Before recording:
 - Keep the cursor visible during interactions.
 - Capture 16:9 MP4 first; derive the GIF from that same real recording.
 
-## Activate the README hero
+## Upgrade the README hero with audit evidence
 
-Only after the real recording is captured and reviewed:
+The README already links the frontend product clip. After a real audit recording is captured and reviewed:
 
-1. Add <code>assets/verifai-intro.mp4</code>.
-2. Derive <code>assets/verifai-intro.gif</code> from the same recording.
-3. Replace the README demo-status callout with the GIF hero linked to the MP4 or live product.
-4. Add **Watch demo** near the top.
+1. Add <code>assets/verifai-audit-demo.mp4</code>.
+2. Derive <code>assets/verifai-audit-demo.gif</code> from that same recording.
+3. Use the GIF as the README hero and link it to the audit MP4.
+4. Keep the frontend product clip only if it still adds value.
 5. Re-run README/link checks before merge.
