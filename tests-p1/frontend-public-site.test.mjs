@@ -49,12 +49,28 @@ test('responsive rules explicitly redesign mobile workflow layouts', () => {
 });
 
 
-test('live audit UI never turns worker completion or prototype controls into fake verification', () => {
+test('Deep Audit UI is live-state driven and contains no hard-coded demo verdicts', () => {
   assert.doesNotMatch(js, /task\.state==='completed'\?'Verified'/);
-  assert.doesNotMatch(js, /Payment-timeout experiment replayed\./);
   assert.match(js, /report\?\.findingState\|\|'Completed'/);
-  assert.match(js, /Preview only — run Deep Audit for executed payment-timeout evidence\./);
-  assert.doesNotMatch(html, /Pull request #82 created from verifiai\/fix-payment-timeout/);
-  assert.match(html, /Prototype control only — a real PR unlocks only after independent verification\./);
-  assert.match(html, /Illustrative product preview — run Deep Audit for executed evidence\./);
+  assert.match(js, /Run Deep Audit to collect executed evidence before showing a verdict\./);
+  for (const fake of [
+    /my-store/,
+    /Payment-provider latency/,
+    /Run #482/,
+    /9f712c8/,
+    /3 \/ 3 failed/,
+    /10 \/ 10 passed/,
+    /verifiai-fix-17/,
+    /github\.com\/acme\/checkout/,
+  ]) {
+    assert.doesNotMatch(html, fake);
+    assert.doesNotMatch(js, fake);
+  }
+  assert.match(html, /id="drawer"/);
+  assert.match(html, /id="deepStatus"/);
+  assert.match(html, /id="agentList"/);
+  assert.match(html, /id="feed"/);
+  assert.match(html, /id="reportBody"/);
+  assert.match(html, /Results appear only after the API returns executed evidence\./);
+  assert.match(html, /Locked until verified/);
 });
