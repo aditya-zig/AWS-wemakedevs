@@ -1,4 +1,4 @@
-import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
+const { createHmac, randomUUID, timingSafeEqual } = require('node:crypto');
 
 const SESSION_COOKIE = 'verifiai_session';
 const OAUTH_COOKIE = 'verifiai_oauth';
@@ -231,7 +231,7 @@ async function googleCallback(request, response, url) {
   redirect(response, callbackRedirect('google'));
 }
 
-export default async function handler(request, response) {
+module.exports = async function handler(request, response) {
   try {
     const url = new URL(request.url || '/', 'https://verifai.invalid');
     const path = (url.searchParams.get('path') || '').replace(/^\/+|\/+$/g, '');
