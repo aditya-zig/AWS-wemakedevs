@@ -724,7 +724,7 @@ h3 { font-size: 17px; line-height: 1.25; letter-spacing: -.01em; margin-bottom: 
       return `<header class="app-header"><div class="header-inner">
         ${brand()}
         <nav class="header-nav" aria-label="Primary"><button type="button" data-scroll-target="product">Product</button><button type="button" data-scroll-target="demo">Deep Audit</button><button type="button" data-scroll-target="how">Capabilities</button><button type="button" data-scroll-target="workflow">How It Works</button><button type="button" data-scroll-target="security">Security</button><button type="button" data-scroll-target="developers">Developers</button></nav>
-        <div class="header-actions"><button class="btn ghost" data-nav="login">Sign In</button>${button('Start Verification','login','primary')}</div>
+        <div class="header-actions"><button class="btn ghost" data-nav="login">Sign In</button>${button('Start Verification','login','primary','data-audit-trigger')}</div>
       </div></header>`;
     }
     return `<header class="app-header"><div class="header-inner">
@@ -793,7 +793,7 @@ h3 { font-size: 17px; line-height: 1.25; letter-spacing: -.01em; margin-bottom: 
           <div class="eyebrow">Autonomous Software Verification Lab</div>
           <h1>Know if your software actually works.</h1>
           <p class="lede">Connect a repository. VERIFAI runs the real product, simulates users, breaks dependencies safely, investigates failures, and proves whether the fix survives the same experiment.</p>
-          <div class="hero-actions">${button('Start Verification','login','primary')}<button class="btn" data-action="scroll-demo">Watch Deep Audit</button></div>
+          <div class="hero-actions">${button('Start Verification','login','primary','data-audit-trigger')}<button class="btn" data-action="scroll-demo">Watch Deep Audit</button></div>
           <div class="hero-proof"><span><i></i>Evidence-backed findings</span><span><i></i>Isolated verification</span><span><i></i>No silent merges</span></div>
           <div class="particle-band"><div id="particleText" class="particle-text" aria-label="VERIFAI"><canvas class="particle-text__canvas" aria-hidden="true"></canvas><span class="particle-text__sr">VERIFAI</span></div></div>
         </section>
