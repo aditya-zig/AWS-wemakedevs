@@ -686,7 +686,7 @@ h3 { font-size: 17px; line-height: 1.25; letter-spacing: -.01em; margin-bottom: 
     if (marketing) {
       return `<header class="app-header"><div class="header-inner">
         ${brand()}
-        <nav class="header-nav" aria-label="Primary"><button type="button" data-scroll-target="product">Product</button><button type="button" data-scroll-target="demo">Deep Audit</button><button type="button" data-scroll-target="how">Capabilities</button><button type="button" data-scroll-target="workflow">How It Works</button><button type="button" data-scroll-target="security">Security</button><button type="button" data-scroll-target="developers">Developers</button></nav>
+        <nav class="header-nav" aria-label="Primary"><span class="brand-mark" aria-hidden="true" title="VERIFAI"></span><button type="button" data-scroll-target="product">Product</button><button type="button" data-scroll-target="demo">Deep Audit</button><button type="button" data-scroll-target="how">Capabilities</button><button type="button" data-scroll-target="workflow">How It Works</button><button type="button" data-scroll-target="security">Security</button><button type="button" data-scroll-target="developers">Developers</button></nav>
         <div class="header-actions"><button class="btn ghost" data-nav="login">Sign In</button>${button('Start Verification','login','primary','data-audit-trigger')}</div>
       </div></header>`;
     }
