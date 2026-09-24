@@ -44,12 +44,26 @@ export interface AwsTargetLifecycleConfig {
   healthProbeFunctionName?: string;
 }
 
+export interface AwsTargetSidecar {
+  name: string;
+  image?: string;
+  sourceImage?: string;
+  mirrorToTargetEcr?: boolean;
+  essential?: boolean;
+  environment?: Record<string, string>;
+}
+
 export interface AwsTargetRequest {
   repoUrl: string;
   branch: string;
   commitSha: string;
   imageTag: string;
   dockerfile?: string;
+  buildContext?: string;
+  buildTarget?: string;
+  buildArgs?: Record<string, string>;
+  environment?: Record<string, string>;
+  sidecars?: AwsTargetSidecar[];
   healthPath?: string;
 }
 
@@ -89,9 +103,72 @@ function shell(value: string): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
+function repoRelativePath(value: string | undefined, fallback: string, label: string): string {
+  const normalized = (value?.trim() || fallback).replace(/^\.\//, '');
+  if (!normalized || normalized.startsWith('/') || normalized.split('/').includes('..') || normalized.includes('\\')) {
+    throw new AwsTargetLifecycleError('build', `VERIFIAI_UNSUPPORTED: invalid ${label} '${value ?? ''}'`);
+  }
+  return normalized;
+}
+
+function assertEnvironmentName(name: string): void {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+    throw new AwsTargetLifecycleError('build', `VERIFIAI_UNSUPPORTED: invalid environment/build-arg name '${name}'`);
+  }
+}
+
+function mergeEnvironment(
+  existing: Array<{ name?: string; value?: string }> | undefined,
+  overrides: Record<string, string> | undefined,
+): Array<{ name: string; value: string }> | undefined {
+  if (!overrides || Object.keys(overrides).length === 0) return existing as Array<{ name: string; value: string }> | undefined;
+  const merged = new Map<string, string>();
+  for (const item of existing ?? []) {
+    if (item?.name && typeof item.value === 'string') merged.set(item.name, item.value);
+  }
+  for (const [name, value] of Object.entries(overrides)) {
+    assertEnvironmentName(name);
+    merged.set(name, String(value));
+  }
+  return [...merged].map(([name, value]) => ({ name, value }));
+}
+
 export function buildArbitraryRepoBuildspec(request: AwsTargetRequest, config: AwsTargetLifecycleConfig): string {
-  const dockerfile = request.dockerfile?.trim() || 'Dockerfile';
+  const dockerfile = repoRelativePath(request.dockerfile, 'Dockerfile', 'Dockerfile path');
+  const buildContext = repoRelativePath(request.buildContext, '.', 'Docker build context');
   const imageUri = `${config.ecrRegistry}/${config.ecrRepository}:${request.imageTag}`;
+  const dockerfilePath = `/tmp/verifiai-target/${dockerfile}`;
+  const contextPath = buildContext === '.' ? '/tmp/verifiai-target' : `/tmp/verifiai-target/${buildContext}`;
+  const buildArgs = Object.entries(request.buildArgs ?? {}).map(([name, value]) => {
+    assertEnvironmentName(name);
+    return `--build-arg ${shell(`${name}=${String(value)}`)}`;
+  });
+  const buildTarget = request.buildTarget?.trim();
+  if (buildTarget && !/^[A-Za-z0-9_.-]+$/.test(buildTarget)) {
+    throw new AwsTargetLifecycleError('build', `VERIFIAI_UNSUPPORTED: invalid Docker build target '${buildTarget}'`);
+  }
+  const dockerBuild = [
+    'docker build',
+    '-f', shell(dockerfilePath),
+    ...(buildTarget ? ['--target', shell(buildTarget)] : []),
+    ...buildArgs,
+    '-t', shell(imageUri),
+    shell(contextPath),
+  ].join(' ');
+
+  const sidecarMirrorCommands = (request.sidecars ?? []).flatMap((sidecar) => {
+    if (!sidecar.mirrorToTargetEcr) return [];
+    if (!/^[A-Za-z0-9_-]{1,255}$/.test(sidecar.name) || !sidecar.sourceImage?.trim()) {
+      throw new AwsTargetLifecycleError('build', `VERIFIAI_UNSUPPORTED: mirrored sidecar '${sidecar.name}' requires a valid name and sourceImage`);
+    }
+    const mirrored = `${config.ecrRegistry}/${config.ecrRepository}:${request.imageTag}-sidecar-${sidecar.name}`;
+    return [
+      `      - docker pull ${shell(sidecar.sourceImage)}`,
+      `      - docker tag ${shell(sidecar.sourceImage)} ${shell(mirrored)}`,
+      `      - docker push ${shell(mirrored)}`,
+    ];
+  });
+
   return [
     'version: 0.2',
     'phases:',
@@ -103,9 +180,11 @@ export function buildArbitraryRepoBuildspec(request: AwsTargetRequest, config: A
     '      - rm -rf /tmp/verifiai-target && mkdir -p /tmp/verifiai-target',
     `      - git clone --depth 1 --branch ${shell(request.branch)} ${shell(request.repoUrl)} /tmp/verifiai-target`,
     `      - cd /tmp/verifiai-target && git fetch --depth 1 origin ${shell(request.commitSha)} && git checkout ${shell(request.commitSha)}`,
-    `      - test -f /tmp/verifiai-target/${dockerfile} || (echo "VERIFIAI_UNSUPPORTED: Dockerfile not found at ${dockerfile}" >&2; exit 42)`,
-    `      - docker build -f /tmp/verifiai-target/${dockerfile} -t ${shell(imageUri)} /tmp/verifiai-target`,
+    `      - test -f ${shell(dockerfilePath)} || (echo "VERIFIAI_UNSUPPORTED: Dockerfile not found at ${dockerfile}" >&2; exit 42)`,
+    ...(buildContext === '.' ? [] : [`      - test -d ${shell(contextPath)} || (echo "VERIFIAI_UNSUPPORTED: Docker build context not found at ${buildContext}" >&2; exit 42)`]),
+    `      - ${dockerBuild}`,
     `      - docker push ${shell(imageUri)}`,
+    ...sidecarMirrorCommands,
     'artifacts:',
     '  files: []',
   ].join('\n');
@@ -196,11 +275,51 @@ export class AwsTargetLifecycle {
     const base = await this.ecs.send(new DescribeTaskDefinitionCommand({ taskDefinition: this.config.taskDefinition }));
     const baseTask = base?.taskDefinition;
     if (!baseTask) throw new AwsTargetLifecycleError('launch', 'Base ECS task definition could not be loaded');
-    const containers = (baseTask.containerDefinitions ?? []).map((container: any) =>
+    const baseContainers = baseTask.containerDefinitions ?? [];
+    const targetBase = baseContainers.find((container: any) => container.name === this.config.containerName);
+    if (!targetBase) {
+      throw new AwsTargetLifecycleError('launch', `Container ${this.config.containerName} was not found in the base task definition`);
+    }
+
+    const sidecarNames = new Set<string>();
+    const sidecars = (request.sidecars ?? []).map((sidecar) => {
+      if (!/^[A-Za-z0-9_-]{1,255}$/.test(sidecar.name)) {
+        throw new AwsTargetLifecycleError('launch', `VERIFIAI_UNSUPPORTED: invalid sidecar name '${sidecar.name}'`);
+      }
+      if (sidecar.name === this.config.containerName || sidecarNames.has(sidecar.name)) {
+        throw new AwsTargetLifecycleError('launch', `VERIFIAI_UNSUPPORTED: duplicate sidecar name '${sidecar.name}'`);
+      }
+      const sidecarImage = sidecar.mirrorToTargetEcr
+        ? `${this.config.ecrRegistry}/${this.config.ecrRepository}:${request.imageTag}-sidecar-${sidecar.name}`
+        : sidecar.image?.trim() || sidecar.sourceImage?.trim();
+      if (!sidecarImage) {
+        throw new AwsTargetLifecycleError('launch', `VERIFIAI_UNSUPPORTED: sidecar '${sidecar.name}' has no image`);
+      }
+      sidecarNames.add(sidecar.name);
+      const logConfiguration = targetBase.logConfiguration
+        ? {
+            ...targetBase.logConfiguration,
+            options: {
+              ...(targetBase.logConfiguration.options ?? {}),
+              'awslogs-stream-prefix': `sidecar-${sidecar.name}`,
+            },
+          }
+        : undefined;
+      return {
+        name: sidecar.name,
+        image: sidecarImage,
+        essential: sidecar.essential ?? true,
+        environment: mergeEnvironment(undefined, sidecar.environment),
+        ...(logConfiguration ? { logConfiguration } : {}),
+      };
+    });
+
+    const containers = baseContainers.map((container: any) =>
       container.name === this.config.containerName
         ? {
             ...container,
             image: imageUri,
+            environment: mergeEnvironment(container.environment, request.environment),
             portMappings: [{
               containerPort: this.config.containerPort,
               hostPort: this.config.containerPort,
@@ -209,9 +328,7 @@ export class AwsTargetLifecycle {
           }
         : container
     );
-    if (!containers.some((container: any) => container.name === this.config.containerName && container.image === imageUri)) {
-      throw new AwsTargetLifecycleError('launch', `Container ${this.config.containerName} was not found in the base task definition`);
-    }
+    containers.push(...sidecars);
     const registered = await this.ecs.send(new RegisterTaskDefinitionCommand({
       family: baseTask.family ?? 'verifiai-target',
       taskRoleArn: baseTask.taskRoleArn,

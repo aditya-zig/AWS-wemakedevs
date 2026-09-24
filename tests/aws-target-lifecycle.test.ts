@@ -40,7 +40,43 @@ test('A05 buildspec clones the exact public repo commit and pushes the requested
   assert.match(buildspec, /docker push '123456789012\.dkr\.ecr\.us-west-2\.amazonaws\.com\/verifiai-targets:audit-deadbeef'/);
 });
 
+test('A05 buildspec supports an inspected upstream Dockerfile target and build arguments', () => {
+  const buildspec = buildArbitraryRepoBuildspec({
+    ...request,
+    dockerfile: 'packages/twenty-docker/twenty/Dockerfile',
+    buildContext: '.',
+    buildTarget: 'twenty-app-dev',
+    buildArgs: { DATABASE_URL: 'postgresql://postgres@127.0.0.1:5432/calendso' },
+    sidecars: [{
+      name: 'database',
+      sourceImage: 'public.ecr.aws/docker/library/postgres:16-alpine',
+      mirrorToTargetEcr: true,
+    }],
+  }, config);
+
+  assert.match(buildspec, /packages\/twenty-docker\/twenty\/Dockerfile/);
+  assert.match(buildspec, /--target 'twenty-app-dev'/);
+  assert.match(buildspec, /--build-arg 'DATABASE_URL=postgresql:\/\/postgres@127\.0\.0\.1:5432\/calendso'/);
+  assert.match(buildspec, /docker pull 'public\.ecr\.aws\/docker\/library\/postgres:16-alpine'/);
+  assert.match(buildspec, /audit-deadbeef-sidecar-database/);
+  assert.match(buildspec, /'\/tmp\/verifiai-target'$/m);
+  assert.throws(
+    () => buildArbitraryRepoBuildspec({ ...request, buildContext: '../outside' }, config),
+    /VERIFIAI_UNSUPPORTED: invalid Docker build context/,
+  );
+});
+
 test('A05 performs CodeBuild -> ECR -> ephemeral Fargate task -> health -> teardown', async () => {
+  const configuredRequest = {
+    ...request,
+    environment: { DEMO_MODE: 'safe' },
+    sidecars: [{
+      name: 'database',
+      image: 'postgres:16-alpine',
+      essential: true,
+      environment: { POSTGRES_HOST_AUTH_METHOD: 'trust' },
+    }],
+  };
   const codebuildCommands: string[] = [];
   const ecsCommands: string[] = [];
   const codebuild: AwsLikeClient = {
@@ -76,7 +112,14 @@ test('A05 performs CodeBuild -> ECR -> ephemeral Fargate task -> health -> teard
             },
           };
         case 'RegisterTaskDefinitionCommand':
+          assert.equal(command.input.cpu, '512');
+          assert.equal(command.input.memory, '1024');
           assert.equal(command.input.containerDefinitions[0].image, '123456789012.dkr.ecr.us-west-2.amazonaws.com/verifiai-targets:audit-deadbeef');
+          assert.deepEqual(command.input.containerDefinitions[0].environment, [{ name: 'DEMO_MODE', value: 'safe' }]);
+          assert.equal(command.input.containerDefinitions.length, 2);
+          assert.equal(command.input.containerDefinitions[1].name, 'database');
+          assert.equal(command.input.containerDefinitions[1].image, 'postgres:16-alpine');
+          assert.deepEqual(command.input.containerDefinitions[1].environment, [{ name: 'POSTGRES_HOST_AUTH_METHOD', value: 'trust' }]);
           return { taskDefinition: { taskDefinitionArn: 'arn:task-definition:ephemeral:1' } };
         case 'RunTaskCommand':
           assert.equal(command.input.taskDefinition, 'arn:task-definition:ephemeral:1');
@@ -111,7 +154,7 @@ test('A05 performs CodeBuild -> ECR -> ephemeral Fargate task -> health -> teard
     now: () => '2026-09-18T17:00:00.000Z',
   });
 
-  const handle = await lifecycle.start(request);
+  const handle = await lifecycle.start(configuredRequest);
   assert.equal(handle.buildId, 'build-1');
   assert.equal(handle.imageDigest, 'sha256:123');
   assert.equal(handle.taskArn, 'arn:task:1');

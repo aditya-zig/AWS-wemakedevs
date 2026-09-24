@@ -1,32 +1,66 @@
 [
   {
-    "id": "owasp-juice-shop",
-    "fullName": "juice-shop/juice-shop",
-    "branch": "master",
-    "dockerfile": "Dockerfile",
-    "containerPort": 3000,
-    "healthPath": "/rest/admin/application-version",
+    "id": "twenty",
+    "fullName": "twentyhq/twenty",
+    "branch": "main",
+    "dockerfile": "packages/twenty-docker/twenty/Dockerfile",
+    "buildContext": ".",
+    "buildTarget": "twenty-app-dev",
+    "containerPort": 2020,
+    "healthPath": "/healthz",
+    "runtimeEnvironment": {
+      "IS_BILLING_ENABLED": "false",
+      "LOGIC_FUNCTION_TYPE": "DISABLED",
+      "CODE_INTERPRETER_TYPE": "DISABLED",
+      "SIGN_IN_PREFILLED": "true",
+      "APPLICATION_LOG_DRIVER": "CONSOLE"
+    },
+    "generateSecrets": [
+      "APP_SECRET",
+      "ENCRYPTION_KEY"
+    ],
     "preferredFinal": true,
-    "objective": "Audit a recognizable interactive web application. Treat documented intentionally vulnerable training behaviors as product context rather than automatically calling every designed challenge a regression. Focus on executed user journeys, runtime/API evidence, security boundaries, and clearly scoped behavior or improvement observations."
+    "objective": "Audit Twenty as a real CRM. Exercise the actual UI, authentication/onboarding, CRM records, API behavior, workflow boundaries, security posture and bounded performance. Use the upstream twenty-app-dev Docker target because it is the repository-supported all-in-one source-build path for development and SDK use. Treat any bootstrap, launch or health uncertainty as Incomplete rather than inventing a fallback."
   },
   {
-    "id": "docker-welcome",
-    "fullName": "docker/welcome-to-docker",
+    "id": "cal-diy",
+    "fullName": "calcom/cal.diy",
     "branch": "main",
     "dockerfile": "Dockerfile",
+    "buildContext": ".",
     "containerPort": 3000,
-    "healthPath": "/",
+    "healthPath": "/auth/login",
+    "buildArgs": {
+      "DATABASE_URL": "postgresql://postgres@127.0.0.1:5432/calendso",
+      "CALCOM_TELEMETRY_DISABLED": "1",
+      "NEXT_PUBLIC_WEBAPP_URL": "http://localhost:3000"
+    },
+    "runtimeEnvironment": {
+      "DATABASE_HOST": "127.0.0.1:5432",
+      "DATABASE_URL": "postgresql://postgres@127.0.0.1:5432/calendso",
+      "DATABASE_DIRECT_URL": "postgresql://postgres@127.0.0.1:5432/calendso",
+      "NEXT_PUBLIC_WEBAPP_URL": "http://localhost:3000",
+      "NEXTAUTH_URL": "http://localhost:3000",
+      "CALCOM_TELEMETRY_DISABLED": "1"
+    },
+    "generateSecrets": [
+      "NEXTAUTH_SECRET",
+      "CALENDSO_ENCRYPTION_KEY"
+    ],
+    "sidecars": [
+      {
+        "name": "database",
+        "sourceImage": "public.ecr.aws/docker/library/postgres:16-alpine",
+        "mirrorToTargetEcr": true,
+        "essential": true,
+        "environment": {
+          "POSTGRES_USER": "postgres",
+          "POSTGRES_DB": "calendso",
+          "POSTGRES_HOST_AUTH_METHOD": "trust"
+        }
+      }
+    ],
     "preferredFinal": false,
-    "objective": "Audit a small recognizable Docker web application as a low-complexity backup. Exercise the actual UI, repository structure, startup behavior and bounded performance checks. Report uncertainty when richer API behavior is not present."
-  },
-  {
-    "id": "traefik-whoami",
-    "fullName": "traefik/whoami",
-    "branch": "master",
-    "dockerfile": "Dockerfile",
-    "containerPort": 80,
-    "healthPath": "/",
-    "preferredFinal": false,
-    "objective": "Audit a recognizable minimal HTTP service as an infrastructure-oriented backup. Exercise real HTTP behavior, repository/security inspection and bounded performance checks. Do not invent browser journeys that the product does not expose."
+    "objective": "Audit Cal.diy as a real scheduling application. Exercise the real login/onboarding and booking surfaces, tRPC/API behavior, database-backed flows, security boundaries and bounded performance. Use the upstream root Dockerfile and the PostgreSQL dependency required by its documented Docker Compose/start path. Treat missing bootstrap requirements or an unhealthy app as Incomplete rather than claiming a successful audit."
   }
 ]
