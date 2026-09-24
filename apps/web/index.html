@@ -561,6 +561,36 @@ h3 { font-size: 17px; line-height: 1.25; letter-spacing: -.01em; margin-bottom: 
 @media(max-width:640px){.developer-section{padding:28px 20px}.trust-card{padding:22px}.trust-card h3{font-size:25px}}
 @media(prefers-reduced-motion:reduce){.scroll-reveal,.scroll-reveal.reveal-scale{opacity:1!important;transform:none!important;transition:none!important}}
 
+/* Deep Audit drawer */
+.drawer { position:fixed; inset:0; z-index:180; pointer-events:none; visibility:hidden; }
+.drawer.open { pointer-events:auto; visibility:visible; }
+.backdrop { position:absolute; inset:0; border:0; background:rgba(18,13,10,.48); opacity:0; transition:opacity .22s ease; backdrop-filter:blur(3px); }
+.drawer.open .backdrop { opacity:1; }
+.drawer > aside { position:absolute; right:0; top:0; bottom:0; width:min(560px,100%); background:var(--surface); padding:44px 32px; overflow:auto; transform:translateX(100%); transition:transform .32s cubic-bezier(.2,.8,.2,1); box-shadow:-25px 0 70px rgba(45,32,25,.24); border-left:1px solid var(--border); }
+.drawer.open > aside { transform:translateX(0); }
+.x { position:absolute; right:18px; top:17px; width:37px; height:37px; border-radius:50%; border:1px solid var(--border); background:var(--surface); color:var(--text); font-size:20px; display:grid; place-items:center; cursor:pointer; }
+.drawer h2 { font-size:42px; letter-spacing:-.05em; margin:0 0 26px; }
+.drawer label { font-size:11px; font-weight:800; color:var(--muted); }
+.repo-input { display:grid; grid-template-columns:1fr auto; gap:8px; margin-top:7px; }
+.repo-input input,.audit-options input { width:100%; border:1px solid var(--border-strong); border-radius:10px; padding:11px 12px; background:var(--surface); color:var(--text); outline:none; }
+.repo-input input:focus,.audit-options input:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(255,79,0,.11); }
+.audit-options { display:grid; gap:8px; margin-top:16px; padding:14px; border:1px solid var(--border); border-radius:12px; background:var(--surface-2); }
+.audit-options label { display:flex; justify-content:space-between; align-items:center; margin-top:3px; }
+.audit-options label small { font-size:10px; font-weight:600; color:var(--muted-2); }
+.note { font-size:12px; color:var(--muted); line-height:1.5; margin:16px 0; }
+.progress { display:grid; gap:7px; margin-top:22px; }
+.progress > div { display:grid; grid-template-columns:32px 1fr auto; gap:9px; align-items:center; border:1px solid var(--border); border-radius:11px; background:var(--surface); padding:10px; }
+.progress span { width:32px; height:32px; border-radius:8px; background:var(--surface-3); display:grid; place-items:center; font-weight:800; font-size:11px; }
+.progress b { font-size:12px; }
+.progress small { font-size:10px; color:var(--muted); }
+.progress > div.active { border-color:var(--accent); box-shadow:0 0 0 3px rgba(255,79,0,.08); }
+.progress > div.done span { background:var(--verified-soft); color:var(--verified); }
+.result { margin-top:22px; border:1px solid var(--border); border-radius:13px; background:var(--surface); padding:15px; }
+.result > span { display:inline-flex; font-size:10px; font-weight:900; color:var(--failed); background:var(--failed-soft); padding:5px 7px; border-radius:999px; }
+.result b { display:block; font-size:18px; margin:9px 0; }
+.result p { font-size:12px; line-height:1.5; color:var(--muted); }
+@media(max-width:640px){.drawer > aside{padding:64px 18px 28px}.repo-input{grid-template-columns:1fr}.drawer h2{font-size:36px}}
+
 </style>
   <!-- Evidence, not AI guesses -->
 </head>
@@ -574,86 +604,18 @@ h3 { font-size: 17px; line-height: 1.25; letter-spacing: -.01em; margin-bottom: 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.VERIFIAI_CORE = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function() {
-  const FLOW_ORDER = [
-    'landing','login','dashboard','repository','analysis','environment',
-    'requirements','parsed','plan','live','results','finding','repair',
-    'reverify','verified','project'
-  ];
+  const FLOW_ORDER = ['landing','login','dashboard','repository','audit'];
 
   const SCREEN_META = {
     landing: { title: 'VERIFAI', section: 'Marketing' },
     login: { title: 'Sign in', section: 'Authentication' },
     dashboard: { title: 'Projects', section: 'Dashboard' },
     repository: { title: 'Select repository', section: 'New Project' },
-    analysis: { title: 'Repository analysis', section: 'New Project' },
-    environment: { title: 'Environment', section: 'New Project' },
-    requirements: { title: 'Requirements', section: 'New Project' },
-    parsed: { title: 'Review requirements', section: 'New Project' },
-    plan: { title: 'Verification Plan', section: 'New Project' },
-    live: { title: 'Live Verification Lab', section: 'Verification' },
-    results: { title: 'Verification Results', section: 'Verification' },
-    finding: { title: 'Failure Evidence', section: 'Investigation' },
-    repair: { title: 'Proposed Fix', section: 'Repair' },
-    reverify: { title: 'Re-verification', section: 'Repair' },
-    verified: { title: 'Fix Verified', section: 'Repair' },
-    project: { title: 'my-store', section: 'Project' }
+    audit: { title: 'Deep Audit', section: 'Verification' }
   };
 
   const DEMO_DATA = {
-    project: {
-      name: 'my-store',
-      repo: 'aditya-zig / my-store',
-      branch: 'main',
-      commit: '9f712c8',
-      framework: 'Next.js',
-      packageManager: 'pnpm',
-      database: 'PostgreSQL',
-      dockerfile: 'Found',
-      apiRoutes: 18,
-      services: 3,
-      testFramework: 'Vitest'
-    },
-    requirements: [
-      { id: 'R-01', title: 'Account creation', status: 'verified', tags: ['Functional'], text: 'User can create an account using a valid email and password.' },
-      { id: 'R-02', title: 'Checkout success', status: 'verified', tags: ['Functional','Database','API'], text: 'A valid payment must create exactly one order and confirmation.' },
-      { id: 'R-03', title: 'Payment failure resilience', status: 'failed', tags: ['Chaos','Functional'], text: "If the payment provider becomes unavailable, checkout should fail gracefully without losing the user's cart." },
-      { id: 'R-04', title: 'Order permissions', status: 'verified', tags: ['Security','API'], text: "Users must not be able to access another user's orders." },
-      { id: 'R-08', title: 'Email delivery', status: 'unknown', tags: ['Integration'], text: 'Order confirmation email is delivered after successful checkout.' }
-    ],
-    experiment: {
-      id: 'E-17',
-      name: 'Payment-provider latency',
-      expected: 'Checkout should either complete or show an actionable timeout message.',
-      observed: 'Checkout remained indefinitely in loading state.',
-      evidence: ['Screenshot','Network request','Trace','Console logs','Database snapshot']
-    },
-    timeline: [
-      ['14:32:04','Environment started','done'],
-      ['14:32:12','Application healthy','done'],
-      ['14:32:18','Test user created','done'],
-      ['14:32:29','Checkout workflow started','done'],
-      ['14:32:41','Payment latency injected','warn'],
-      ['14:32:49','Application stopped responding','fail'],
-      ['14:32:52','Failure detected','fail'],
-      ['14:32:54','Collecting runtime evidence','running'],
-      ['14:33:02','Failure reproduced 3 / 3 times','done']
-    ],
-    finding: {
-      title: 'Payment timeout leaves checkout stuck',
-      status: 'Reproducible',
-      requirement: 'R-03 Payment failure resilience',
-      severity: 'High',
-      reproduction: '3 / 3',
-      expected: 'Checkout should display a timeout error and preserve cart state.',
-      observed: 'When the payment API takes longer than 8 seconds, the UI remains indefinitely in loading state.',
-      source: 'src/services/payment.ts:84',
-      rootCause: 'Timeout error is swallowed and checkout state is never reset.'
-    },    verified: {
-      original: '3 / 3 failed',
-      after: '10 / 10 passed',
-      regressions: '0',
-      chaos: 'Passed'
-    }
+    project: { name: '', repo: '', branch: 'main', commit: '' }
   };
 
   function nextScreen(current) {
@@ -724,13 +686,13 @@ h3 { font-size: 17px; line-height: 1.25; letter-spacing: -.01em; margin-bottom: 
     if (marketing) {
       return `<header class="app-header"><div class="header-inner">
         ${brand()}
-        <nav class="header-nav" aria-label="Primary"><button type="button" data-scroll-target="product">Product</button><button type="button" data-scroll-target="demo">Deep Audit</button><button type="button" data-scroll-target="how">Capabilities</button><button type="button" data-scroll-target="workflow">How It Works</button><button type="button" data-scroll-target="security">Security</button><button type="button" data-scroll-target="developers">Developers</button></nav>
-        <div class="header-actions"><button class="btn ghost" data-nav="login">Sign In</button>${button('Start Verification','login','primary')}</div>
+        <nav class="header-nav" aria-label="Primary"><span class="brand-mark" aria-hidden="true" title="VERIFAI"></span><button type="button" data-scroll-target="product">Product</button><button type="button" data-scroll-target="demo">Deep Audit</button><button type="button" data-scroll-target="how">Capabilities</button><button type="button" data-scroll-target="workflow">How It Works</button><button type="button" data-scroll-target="security">Security</button><button type="button" data-scroll-target="developers">Developers</button></nav>
+        <div class="header-actions"><button class="btn ghost" data-nav="login">Sign In</button>${button('Start Verification','login','primary','data-audit-trigger')}</div>
       </div></header>`;
     }
     return `<header class="app-header"><div class="header-inner">
       ${brand()}
-      <div class="muted small mono">${C.DEMO_DATA.project.repo}</div>
+      <div class="muted small mono">${escapeHtml(C.DEMO_DATA.project.repo || 'VERIFAI workspace')}</div>
       <div class="header-actions" style="margin-left:auto"><button class="btn sm" data-action="toast" data-message="Notifications are clear — no action needed.">Notifications</button><button class="btn sm ghost" data-action="toast" data-message="Prototype account menu opened.">AD</button></div>
     </div></header>`;
   }
@@ -742,7 +704,7 @@ h3 { font-size: 17px; line-height: 1.25; letter-spacing: -.01em; margin-bottom: 
 
   function projectSidebar(active = 'Overview') {
     const items = ['Overview','Requirements','Runs','Issues','Evidence','Environments','Integrations','Settings'];
-    return `<aside class="sidebar" aria-label="Project navigation"><div class="side-title">my-store</div>${items.map(item => `<button class="side-link ${item === active ? 'active' : ''}" data-project-tab="${item}">${item}</button>`).join('')}</aside>`;
+    return `<aside class="sidebar" aria-label="Project navigation"><div class="side-title">${escapeHtml(C.DEMO_DATA.project.name || 'Project')}</div>${items.map(item => `<button class="side-link ${item === active ? 'active' : ''}" data-project-tab="${item}">${item}</button>`).join('')}</aside>`;
   }
 
   function appWorkspace(body, active = 'Projects') {
@@ -767,22 +729,21 @@ h3 { font-size: 17px; line-height: 1.25; letter-spacing: -.01em; margin-bottom: 
   }
 
   function landingFlowMarkup() {
-    return `<div class="flow-shell" aria-label="Animated verification workflow">
-      <div class="flow-topbar"><div class="flow-title"><span class="brand-mark" style="width:24px;height:24px;border-radius:7px;font-size:10px">V</span> Verification flow</div><div class="flow-live"><span class="flow-live-dot"></span> LIVE LAB</div></div>
+    return `<div class="flow-shell" aria-label="Live Deep Audit workflow">
+      <div class="flow-topbar"><div class="flow-title"><span class="brand-mark" style="width:24px;height:24px;border-radius:7px;font-size:10px">V</span> Deep Audit flow</div><div class="flow-live"><span class="flow-live-dot"></span> EXECUTED EVIDENCE</div></div>
       <div class="flow-canvas">
         <svg class="flow-lines" viewBox="0 0 720 470" preserveAspectRatio="none" aria-hidden="true">
           <path class="flow-line hot" d="M360,94 C360,120 185,112 185,142"/><path class="flow-line" d="M360,94 C360,120 535,112 535,142"/>
           <path class="flow-line hot" d="M185,216 C185,244 360,226 360,250"/><path class="flow-line hot" d="M535,216 C535,244 360,226 360,250"/>
           <path class="flow-line hot" d="M360,324 C360,348 190,340 190,365"/><path class="flow-line" d="M360,324 C360,348 530,340 530,365"/>
-          <path class="flow-line hot" d="M278,404 C332,404 386,404 442,404"/>
         </svg>
-        <button class="flow-node repo" data-flow-step="0" data-nav="repository"><span class="node-icon">GH</span><span class="node-kicker">Input</span><span class="node-title">Connect repository</span><span class="node-meta">aditya-zig / my-store</span></button>
-        <button class="flow-node requirements" data-flow-step="1" data-nav="parsed"><span class="node-icon">R</span><span class="node-kicker">Expected behavior</span><span class="node-title">Parse requirements</span><span class="node-meta">5 behaviors → experiments</span></button>
-        <button class="flow-node sandbox" data-flow-step="2" data-nav="environment"><span class="node-icon">↗</span><span class="node-kicker">Runtime</span><span class="node-title">Boot isolated app</span><span class="node-meta">Docker · PostgreSQL · API</span></button>
-        <button class="flow-node experiment" data-flow-step="3" data-nav="live"><span class="node-icon"><span class="flow-mini-loader"></span></span><span class="node-kicker">Experiment E-17</span><span class="node-title">Inject payment latency</span><span class="node-meta">8 second provider delay</span></button>
-        <button class="flow-node failure" data-flow-step="4" data-nav="finding"><span class="node-icon" style="color:var(--failed)">!</span><span class="node-kicker">Evidence</span><span class="node-title">Failure reproduced</span><span class="node-meta">Checkout stuck · 3 / 3</span></button>
-        <button class="flow-node repair" data-flow-step="5" data-nav="verified"><span class="node-icon" style="color:var(--verified)">✓</span><span class="node-kicker">Repair + replay</span><span class="node-title">Fix verified</span><span class="node-meta">10 / 10 · 0 regressions</span></button>
-        <div id="flow-caption" class="flow-caption">Connecting repository…</div><div class="flow-hint">Hover a step to inspect it</div>
+        <button class="flow-node repo" data-flow-step="0" data-nav="repository"><span class="node-icon">GH</span><span class="node-kicker">Input</span><span class="node-title">Connect repository</span><span class="node-meta">Choose a real GitHub repo</span></button>
+        <button class="flow-node requirements" data-flow-step="1" data-audit-trigger><span class="node-icon">P</span><span class="node-kicker">Plan</span><span class="node-title">Plan applicable checks</span><span class="node-meta">Workers chosen at runtime</span></button>
+        <button class="flow-node sandbox" data-flow-step="2" data-audit-trigger><span class="node-icon">↗</span><span class="node-kicker">Runtime</span><span class="node-title">Launch isolated workers</span><span class="node-meta">Local or AgentCore</span></button>
+        <button class="flow-node experiment" data-flow-step="3" data-audit-trigger><span class="node-icon"><span class="flow-mini-loader"></span></span><span class="node-kicker">Execution</span><span class="node-title">Collect real evidence</span><span class="node-meta">No synthetic PASS</span></button>
+        <button class="flow-node failure" data-flow-step="4" data-audit-trigger><span class="node-icon">?</span><span class="node-kicker">Verdict</span><span class="node-title">Report what was proven</span><span class="node-meta">Confirmed · Unknown · Incomplete</span></button>
+        <button class="flow-node repair" data-flow-step="5" data-audit-trigger><span class="node-icon">✓</span><span class="node-kicker">Human gate</span><span class="node-title">Review repair evidence</span><span class="node-meta">PR only after verification</span></button>
+        <div id="flow-caption" class="flow-caption">Connect a repository to begin…</div><div class="flow-hint">Click a step to open Deep Audit</div>
       </div>
     </div>`;
   }
@@ -794,7 +755,7 @@ h3 { font-size: 17px; line-height: 1.25; letter-spacing: -.01em; margin-bottom: 
           <div class="eyebrow">Autonomous Software Verification Lab</div>
           <h1>Know if your software actually works.</h1>
           <p class="lede">Connect a repository. VERIFAI runs the real product, simulates users, breaks dependencies safely, investigates failures, and proves whether the fix survives the same experiment.</p>
-          <div class="hero-actions">${button('Start Verification','login','primary')}<button class="btn" data-action="scroll-demo">Watch Deep Audit</button></div>
+          <div class="hero-actions">${button('Start Verification','login','primary','data-audit-trigger')}<button class="btn" data-action="scroll-demo">Watch Deep Audit</button></div>
           <div class="hero-proof"><span><i></i>Evidence-backed findings</span><span><i></i>Isolated verification</span><span><i></i>No silent merges</span></div>
           <div class="particle-band"><div id="particleText" class="particle-text" aria-label="VERIFAI"><canvas class="particle-text__canvas" aria-hidden="true"></canvas><span class="particle-text__sr">VERIFAI</span></div></div>
         </section>
@@ -812,7 +773,7 @@ h3 { font-size: 17px; line-height: 1.25; letter-spacing: -.01em; margin-bottom: 
             <article class="editorial-card"><div class="orange-square"></div><h3>Agents actually use the product</h3><p>Browser and computer-use agents click, type, wait, retry, and observe the same journeys your customers depend on.</p><div class="card-media blue"><div class="media-window"><div class="mini-head"><b>Live browser</b><span>checkout / payment</span></div><div class="media-row"><b>Open checkout</b><span class="media-pill ok">PASS</span></div><div class="media-row"><b>Submit payment</b><span class="media-pill live">RUNNING</span></div><div class="media-row"><b>Recover timeout</b><span class="media-pill fail">FAILED</span></div><div class="media-cursor"></div></div></div></article>
             <article class="editorial-card"><div class="orange-square"></div><h3>Break dependencies on purpose</h3><p>Controlled chaos experiments inject latency, outages, expired auth, and degraded networks inside an isolated environment.</p><div class="card-media"><div class="media-window"><div class="mini-head"><b>Chaos experiment E-17</b><span>payment-provider</span></div><div class="latency-meter"></div><div class="media-row"><b>Network latency</b><span class="media-pill fail">+8,000ms</span></div><div class="media-row"><b>Cart state</b><span class="media-pill ok">PRESERVED</span></div></div></div></article>
             <article class="editorial-card"><div class="orange-square"></div><h3>Find what your app should never expose</h3><p>Security and leakage checks inspect authentication, tokens, sensitive responses, logs, and runtime state with exact evidence.</p><div class="card-media teal"><div class="media-scan"></div><div class="media-window"><div class="mini-head"><b>Security + leakage</b><span>isolated sandbox</span></div><div class="media-row"><code>POST /auth/logout</code><span class="media-pill live">TEST</span></div><div class="media-row"><code>session_token</code><span class="media-pill fail">STILL VALID</span></div><div class="media-row"><code>PAYMENT_API_KEY</code><span class="media-pill ok">REDACTED</span></div><div class="media-bars">${[52,78,44,92,61,73,48].map((h,i)=>`<i style="--h:${h}px;--d:-${i*.13}s"></i>`).join('')}</div></div></div></article>
-            <article class="editorial-card"><div class="orange-square"></div><h3>Finding the bug is not enough. Prove the fix.</h3><p>VERIFAI applies the proposed patch in a fresh sandbox, reruns the original failure, then regression and adversarial checks.</p><div class="card-media ink"><div class="media-window"><div class="mini-head"><b>Repair workspace</b><span>branch/verifiai-fix-17</span></div><div class="media-diff"><div class="minus">- setProcessing(true)</div><div class="plus">+ try { await pay() }</div><div class="plus">+ catch { showTimeout() }</div><div class="plus">+ finally { setProcessing(false) }</div></div><div class="media-row"><b>Original reproduction</b><span class="media-pill ok">10 / 10 PASS</span></div><div class="verified-stamp">✓ FIX VERIFIED</div></div></div></article>
+            <article class="editorial-card"><div class="orange-square"></div><h3>Finding the bug is not enough. Prove the fix.</h3><p>VERIFAI applies the proposed patch in a fresh sandbox, reruns the original failure, then regression and adversarial checks.</p><div class="card-media ink"><div class="media-window"><div class="mini-head"><b>Repair workspace</b><span>locked until evidence</span></div><div class="media-diff"><div>Patch details appear only after a real finding and repair run.</div></div><div class="media-row"><b>Re-verification</b><span class="media-pill">WAITING</span></div><div class="verified-stamp">EVIDENCE REQUIRED</div></div></div></article>
           </div>
           <div class="metric-strip"><div><strong>8</strong><span>verification engines</span></div><div><strong>1</strong><span>combined report</span></div><div><strong>100%</strong><span>evidence-backed findings</span></div><div><strong>0</strong><span>silent auto-merges</span></div></div>
         </section>
@@ -837,17 +798,17 @@ h3 { font-size: 17px; line-height: 1.25; letter-spacing: -.01em; margin-bottom: 
 
         <section class="marketing-block developer-section" id="developers">
           <div class="developer-copy"><div class="eyebrow">Built for developers</div><h2>Every verdict can explain itself.</h2><p>Findings keep the requirement, experiment, execution, observation, root cause, repair, and re-verification linked together. Unknown stays Unknown when evidence is missing.</p><div class="developer-points"><span>Requirement → experiment</span><span>Logs + traces + screenshots + DB state</span><span>Confirmed / Rejected investigation states</span><span>FAILED → VERIFIED only after replay</span></div></div>
-          <pre class="developer-code"><code>requirement: R-03 payment_failure_resilience
-experiment: inject_latency(8000ms)
-reproduction: 3 / 3
-verdict: CONFIRMED
-root_cause: checkout state never resets
-repair: branch/verifiai-fix-17
-reverify: 10 / 10 PASS
-regressions: 0</code></pre>
+          <pre class="developer-code"><code>repository: selected at runtime
+audit: real worker plan
+evidence: executed only
+confirmed: requires supporting evidence
+unknown: preserved when evidence is insufficient
+incomplete: preserved when a tool cannot run
+repair: requires re-verification
+pull_request: human approval required</code></pre>
         </section>
 
-        <section class="landing-cta"><h2>Your users should not be your first real-world test.</h2><p>Connect your repo and find out what happens before you ship.</p><div class="hero-actions">${button('Audit your repo','login','primary')}<button class="btn" data-nav="live">Open Live Lab</button></div></section>
+        <section class="landing-cta"><h2>Your users should not be your first real-world test.</h2><p>Connect your repo and find out what happens before you ship.</p><div class="hero-actions">${button('Audit your repo','repository','primary')}<button class="btn" data-audit-trigger>Open Deep Audit</button></div></section>
         <div class="landing-footer"><strong>VERIFAI — Real-world verification for AI-built software.</strong><span>Evidence over AI opinion · You keep control.</span></div>
       </div>
       <div class="kicker-strip"><div class="kicker-inner"><strong>90-second product flow</strong><div class="demo-steps"><span class="demo-step">Connect repo</span><span class="demo-step">Define requirements</span><span class="demo-step">Run experiments</span><span class="demo-step">Find failure</span><span class="demo-step">Repair</span><span class="demo-step">Prove fix</span></div><button class="btn sm" data-action="scroll-demo">Play demo</button></div></div>`;
@@ -856,7 +817,7 @@ regressions: 0</code></pre>
   function renderLogin() {
     return `${appHeader()}<div class="auth-wrap"><div class="auth-card">
       ${brand()}<h2>Start verifying</h2><p class="muted">Connect your repository and run the first evidence-backed verification.</p>
-      <div class="auth-buttons"><button class="btn primary" data-action="github-oauth">Continue with GitHub</button><button class="btn" data-action="toast" data-message="Google OAuth is not connected yet.">Continue with Google</button></div>
+      <div class="auth-buttons"><button class="btn primary" data-action="github-oauth">Continue with GitHub</button><button class="btn" data-action="google-oauth">Continue with Google</button></div>
       <div class="divider">or</div>
       <label class="label" for="email">Email</label><input id="email" class="input" type="email" placeholder="you@company.com" style="margin-top:7px" />
       <button class="btn" style="width:100%;margin-top:10px" data-action="toast" data-message="Email sign-in is not enabled yet.">Continue with email</button>
@@ -878,151 +839,23 @@ regressions: 0</code></pre>
     return setupPage('Select a repository','Import the application you want VERIFAI to run and verify.',1,content,`<button class="btn ghost" data-nav="dashboard">Back</button>`);
   }
 
-  function renderAnalysis() {
-    const p = C.DEMO_DATA.project;
-    const detected = [['Framework detected',p.framework],['Package manager',p.packageManager],['Database',p.database],['Dockerfile',p.dockerfile],['API routes',`${p.apiRoutes} discovered`],['Services',`${p.services} detected`],['Test framework',p.testFramework],['Deployment config','Not detected']];
-    const content = `<div class="card pad-lg"><div class="actions" style="justify-content:space-between"><div><h3>Analyzing repository…</h3><p class="muted small">Understanding how the application builds and runs.</p></div>${status('verified','Analysis complete')}</div><div class="detect-grid section">${detected.map(([l,v]) => `<div class="detect-item"><div><div class="detect-label">${l}</div><div class="detect-value">${v}</div></div><div class="check">${v === 'Not detected' ? '?' : '✓'}</div></div>`).join('')}</div></div>`;
-    return setupPage('Analyzing repository','VERIFAI inspects the repository and reports only what it can actually detect.',1,content,`${button('Continue','environment','primary')}<button class="btn ghost" data-nav="repository">Back</button>`);
-  }
-
-  function renderEnvironment() {
-    const content = `<div class="card pad-lg"><div class="form-grid">
-      <div class="form-row"><div><div class="label">Branch</div><div class="help">Code to build and verify.</div></div><select class="select"><option>main</option><option>develop</option></select></div>
-      <div class="form-row"><div><div class="label">Build command</div><div class="help">Auto-detected.</div></div><input class="input mono" value="pnpm build" /></div>
-      <div class="form-row"><div><div class="label">Start command</div><div class="help">Runs after the build.</div></div><input class="input mono" value="pnpm start" /></div>
-      <div class="form-row"><div><div class="label">Environment variables</div><div class="help">Secrets are never shown again once saved.</div></div><div><div class="secret-list"><div class="secret-row"><span class="secret-key">DATABASE_URL</span><span class="secret-value">••••••••••••</span><button class="btn sm" data-action="toast" data-message="Secret replacement control opened. Values remain hidden in this prototype.">Replace</button></div><div class="secret-row"><span class="secret-key">STRIPE_SECRET_KEY</span><span class="secret-value">••••••••••••</span><button class="btn sm" data-action="toast" data-message="Secret replacement control opened. Values remain hidden in this prototype.">Replace</button></div><div class="secret-row"><span class="secret-key">OPENAI_API_KEY</span><span class="secret-value">••••••••••••</span><button class="btn sm" data-action="toast" data-message="Secret replacement control opened. Values remain hidden in this prototype.">Replace</button></div></div><div class="actions" style="margin-top:10px"><button class="btn sm" data-action="toast" data-message="Environment variable row added in the full product flow.">Add Variable</button><button class="btn sm" data-action="toast" data-message=".env import opened. Secret values are never rendered back to the page.">Import .env</button><button class="btn sm" data-action="toast" data-message="Paste-variables input opened.">Paste Variables</button></div></div></div>
-      <div class="form-row"><div><div class="label">Services</div><div class="help">Correct what VERIFAI detected.</div></div><div class="tags"><span class="tag">PostgreSQL</span><span class="tag">Redis</span><span class="tag">Stripe</span><span class="tag">OpenAI API</span><span class="tag">S3</span></div></div>
-    </div><details class="section"><summary><strong>Advanced environment</strong> <span class="muted small">ports, health check, working directory, Docker Compose, seed command, test credentials</span></summary><div class="callout" style="margin-top:12px">Health check: <span class="mono">/api/health</span> · Port: <span class="mono">3000</span> · Working directory: <span class="mono">/app</span></div></details></div>`;
-    return setupPage('Configure environment','Tell VERIFAI how to build, launch, and safely isolate this application.',2,content,`${button('Continue','requirements','primary')}<button class="btn ghost" data-nav="analysis">Back</button>`);
-  }
-
-  function renderRequirements() {
-    const value = `Users should be able to create an account.\n\nUsers should be able to add products to their cart.\n\nCheckout must complete successfully if payment succeeds.\n\nIf the payment provider is unavailable, the user must receive a clear error and their cart must remain intact.\n\nUsers must not be able to access another user's orders.`;
-    const content = `<div class="card pad-lg"><label class="label" for="requirements-text">What should this product be able to do?</label><p class="muted small">Describe the behavior you expect. VERIFAI will turn these requirements into executable experiments.</p><textarea id="requirements-text" class="textarea">${value}</textarea><div class="actions" style="margin-top:10px"><button class="btn sm" data-action="toast" data-message="Requirements document picker opened.">Upload requirements document</button><button class="btn sm" data-action="toast" data-message="Markdown requirements input opened.">Paste Markdown</button></div></div>`;
-    return setupPage('Requirements','Define expected behavior in plain language or paste an existing product specification.',3,content,`${button('Parse Requirements','parsed','primary')}<button class="btn ghost" data-nav="environment">Back</button>`);
-  }
-
-  function renderParsed() {
-    const reqs = C.DEMO_DATA.requirements.slice(0,4);
-    const content = `<div class="tiny muted" aria-label="R-03 — Payment failure resilience" style="display:none">R-03 — Payment failure resilience</div><div class="req-list">${reqs.map(r => `<article class="req-card"><div class="req-top"><div><div class="req-id">${r.id} — ${r.title}</div><p style="margin:6px 0 0">${escapeHtml(r.text)}</p><div class="tags">${r.tags.map(t => `<span class="tag">${t}</span>`).join('')}</div></div><div class="actions"><button class="btn sm" data-action="toast" data-message="Requirement editor opened.">Edit</button><button class="btn sm ghost danger" data-action="toast" data-message="Requirement removal requires confirmation in the production app.">Delete</button></div></div></article>`).join('')}</div><button class="btn section" data-action="toast" data-message="New requirement editor opened.">+ Add requirement</button>`;
-    return setupPage('Review parsed requirements','Make sure each requirement says exactly what the product must do.',3,content,`${button('Generate Verification Plan','plan','primary')}<button class="btn ghost" data-nav="requirements">Back</button>`);
-  }
-
-  function renderPlan() {
-    const experiments = ['Complete normal checkout.','Inject 5-second payment provider latency.','Return HTTP 500 from payment provider.','Drop network connection during payment.','Retry checkout.','Confirm cart remains unchanged.','Confirm duplicate orders were not created.','Inspect application logs and database state.'];
-    const content = `<div class="callout"><strong>Verification Plan</strong><div class="muted small">VERIFAI generated experiments to verify your requirements before running anything expensive.</div></div>
-      <div class="plan-group"><div class="plan-head"><div><div class="req-id">R-03</div><h3 style="margin:3px 0 0">Payment failure resilience</h3></div>${status('running','8 experiments')}</div><ol class="experiment-list">${experiments.map(x => `<li>${x}</li>`).join('')}</ol><div class="engine-row"><span class="engine">Desktop interaction</span><span class="engine">API verification</span><span class="engine">Chaos testing</span><span class="engine">Database inspection</span></div></div>
-      <div class="section req-list"><div class="req-card"><div class="req-top"><div><div class="req-id">R-01 — Account creation</div><div class="muted small">4 experiments · browser + API + database</div></div>${status('running','Ready')}</div></div><div class="req-card"><div class="req-top"><div><div class="req-id">R-04 — Order permissions</div><div class="muted small">6 experiments · API + security analysis</div></div>${status('running','Ready')}</div></div></div>`;
-    return setupPage('Verification Plan','Review the exact experiments VERIFAI will run against the isolated application.',4,content,`${button('Run Verification','live','primary')}<button class="btn" data-nav="parsed">Edit Plan</button>`);
-  }
-
-  function renderLive() {
-    const r = C.DEMO_DATA.requirements;
-    const exp = C.DEMO_DATA.experiment;
-    return `${appHeader()}<div class="lab">
-      <div class="section-head"><div><div class="eyebrow">Run #482 · commit 9f712c8</div><h2>Live Verification Lab</h2><p class="muted">The isolated environment is running experiments against the real application.</p></div><div class="actions">${status('failed','Failure found')}<button class="btn" data-action="replay-live">Replay</button>${button('Finish Run','results','primary')}</div></div>
-      <div class="lab-grid">
-        <div class="panel"><div class="panel-head"><div class="panel-title">Requirements</div><span class="tiny muted">4 active</span></div><div class="panel-body">${r.slice(0,4).map((x,i) => `<div class="lab-req ${x.id === 'R-03' ? 'active' : ''}"><span><strong>${x.id}</strong><br><span class="tiny">${x.title}</span></span>${x.id === 'R-03' ? status('failed','Failed') : i < 2 ? status('verified','Verified') : status('running','Running')}</div>`).join('')}<hr style="border:0;border-top:1px solid var(--border);margin:14px 0"><div class="panel-title" style="margin-bottom:8px">Verification engines</div><div class="engine-list">${[['User Simulation','verified','Completed'],['Desktop Interaction','running','Running'],['API Verification','verified','Completed'],['Security Analysis','running','Running'],['Chaos Testing','failed','Failure found'],['Performance','unknown','Pending']].map(([n,k,l]) => `<div class="engine-status"><span class="small">${n}</span>${status(k,l)}</div>`).join('')}</div><details style="margin-top:12px"><summary class="tiny muted">Technical details</summary><div class="tiny muted" style="margin-top:7px">User Simulation · advanced engine<br>Security · advanced engine<br>Computer Use · desktop runtime</div></details></div></div>
-        <div class="panel"><div class="panel-head"><div class="panel-title">Experiment timeline</div><span class="mono tiny muted">14:33:02</span></div><div class="panel-body"><div class="timeline">${C.DEMO_DATA.timeline.map(([time,label,kind],i) => `<div class="timeline-row" style="--i:${i}"><div class="time">${time}</div><div class="event-dot ${kind}"></div><div>${label}${label.includes('Failure detected') ? `<div class="tiny muted">R-03 · payment failure resilience</div>` : ''}</div></div>`).join('')}</div>
-          <div class="desktop"><div class="desktop-top"><span class="dot"></span><span class="dot"></span><span class="dot"></span><strong class="tiny" style="margin-left:6px">Live Environment</strong><button class="btn sm ghost" style="margin-left:auto" data-action="toggle-live">${state.livePreview ? 'Collapse' : 'Expand'}</button></div>${state.livePreview ? `<div class="desktop-body"><div class="checkout"><strong>Complete payment</strong><div class="checkout-line"></div><div class="checkout-line short"></div><div class="spinner"></div><div class="tiny" style="text-align:center;color:var(--failed)">Processing payment… 8.4s</div></div></div>` : ''}</div></div></div>
-        <div class="panel"><div class="panel-head"><div class="panel-title">Current experiment</div>${status('failed','Failed')}</div><div class="panel-body"><div class="req-id">Experiment ${exp.id}</div><h3 style="margin-top:5px">Payment-provider latency</h3><div class="callout" style="margin-top:12px"><div class="tiny muted">Expected</div>${exp.expected}</div><div class="callout fail" style="margin-top:9px"><div class="tiny muted">Observed</div>${exp.observed}</div><div class="tiny muted" style="margin-top:14px">Evidence</div><div class="evidence-chips">${exp.evidence.map(e => `<span class="tag">${e}</span>`).join('')}</div><div class="section"><strong>Reproduction</strong><div style="margin-top:6px">${status('verified','3 / 3 reproduced')}</div></div></div></div>
+  function renderAuditWorkspace() {
+    const repo = C.DEMO_DATA.project.repo;
+    const title = repo ? escapeHtml(repo) : 'No repository selected';
+    return `${appHeader()}<div class="page compact">
+      <div class="section-head"><div><div class="eyebrow">Deep Audit</div><h2>${title}</h2><p id="deepStatus" class="muted">No audit has run yet. Results appear only after the API returns executed evidence.</p></div><div class="actions"><button class="btn primary" data-audit-trigger>Run Deep Audit</button><button class="btn" data-nav="repository">Change repository</button></div></div>
+      <div class="summary-grid">
+        <div class="metric"><span class="muted small">Audit state</span><strong>Ready</strong></div>
+        <div class="metric"><span class="muted small">Evidence</span><strong id="evidenceCount">0 executed evidence items</strong></div>
+        <div class="metric"><span class="muted small">Pull request</span><strong>Locked until verified</strong></div>
       </div>
+      <div class="section" style="display:grid;grid-template-columns:minmax(260px,.72fr) minmax(0,1.28fr);gap:16px">
+        <div class="card pad-lg"><div class="section-head"><h3>Workers</h3><span class="tiny muted">Live state</span></div><ul id="agentList" style="list-style:none;padding:0;margin:0"><li class="muted small">Workers will appear after the real plan is created.</li></ul></div>
+        <div class="card pad-lg"><div class="section-head"><h3>Live evidence</h3><span class="tiny muted">Executed only</span></div><div id="feed" class="muted small">No worker activity yet.</div></div>
+      </div>
+      <section class="section card pad-lg"><div class="section-head"><div><div class="eyebrow">Evidence report</div><h3>Confirmed / Unconfirmed / Unknown / Incomplete</h3></div></div><div id="reportBody"><p class="muted">No findings are shown until a Deep Audit has actually executed. Missing tools remain Incomplete rather than becoming a synthetic pass.</p></div></section>
+      <section class="section callout"><strong>Create pull request</strong><div class="muted small">A repair must be independently re-verified before a pull request can be unlocked. VERIFAI never auto-merges.</div></section>
     </div>`;
-  }
-
-  function renderResults() {
-    return `${appHeader()}<div class="page narrow compact"><div class="eyebrow">Run #482</div><h2>Verification complete</h2><p class="muted">You can now see what works, what failed, and what could not be verified.</p>
-      <div class="summary-grid"><div class="metric"><span class="muted small">Requirements</span><strong>24</strong></div><div class="metric"><span class="muted small">Verified</span><strong style="color:var(--verified)">18</strong></div><div class="metric"><span class="muted small">Failed / Unknown</span><strong><span style="color:var(--failed)">4</span> <span class="muted">/ 2</span></strong></div></div>
-      <section class="result-section"><h3>Failed</h3><article class="result-row failed"><div class="result-head"><div><div class="req-id">R-03</div><h3 style="margin-top:4px">Payment failure resilience — Failed</h3><p class="muted small">Payment timeout leaves checkout permanently loading.</p><div class="tags"><span class="tag">Severity: High</span><span class="tag">Reproduced: 3 / 3 executions</span></div></div>${button('Investigate','finding','primary')}</div></article></section>
-      <section class="result-section"><h3>Verified</h3><article class="result-row verified"><div class="result-head"><div><div class="req-id">R-01</div><h3 style="margin-top:4px">Account creation — Verified</h3><p class="muted small">12 successful executions · Chrome · desktop workflow · API confirmation · database assertion.</p></div>${status('verified','Verified')}</div></article></section>
-      <section class="result-section"><h3>Unknown</h3><article class="result-row unknown"><div class="result-head"><div><div class="req-id">R-08</div><h3 style="margin-top:4px">Email delivery — Unknown</h3><p class="muted small">Could not verify because SMTP credentials were not provided. Unknown means insufficient evidence, not a failure.</p></div><button class="btn" data-nav="environment">Resolve Setup</button></div></article></section>
-      <div class="section actions">${button('Open project','project','')}<button class="btn ghost" data-nav="live">View run timeline</button></div>
-    </div>`;
-  }
-
-  function renderEvidenceContent() {
-    const f = C.DEMO_DATA.finding;
-    const views = {
-      Summary: `<div class="evidence-two"><div class="callout"><div class="tiny muted">Expected</div><strong>${f.expected}</strong></div><div class="callout fail"><div class="tiny muted">Observed</div><strong>${f.observed}</strong></div></div><div class="section"><h3>Reproduction rate</h3><div class="metric" style="max-width:220px"><span class="muted small">Repeated executions</span><strong>3 / 3</strong></div></div>`,
-      Reproduction: `<div class="callout"><h3>Reproduction</h3><ol class="steps"><li>Start application.</li><li>Log in as test user.</li><li>Add product.</li><li>Begin checkout.</li><li>Add 8-second latency to payment provider.</li><li>Submit payment.</li><li>Observe spinner never resolves.</li></ol></div>`,
-      Screenshots: `<div class="desktop"><div class="desktop-top"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="tiny mono muted">failure-482.png</span></div><div class="desktop-body"><div class="checkout"><strong>Checkout</strong><div class="checkout-line"></div><div class="spinner"></div><div class="tiny" style="text-align:center;color:var(--failed)">Loading indefinitely after 8s timeout</div></div></div></div>`,
-      Logs: `<pre class="code-block">14:32:41 payment.request started\n14:32:49 ERROR upstream timeout after 8000ms\n14:32:49 payment.request rejected\n14:32:50 checkout.state remains PROCESSING\n14:33:02 reproduction complete: 3/3</pre>`,
-      Traces: `<pre class="code-block">checkout.submit  8.42s\n└─ payment.process  8.01s  ERROR timeout\n   └─ provider.call  8.00s  DEADLINE_EXCEEDED\n└─ checkout.reset  MISSING</pre>`,
-      Network: `<div class="card flat"><div class="repo-row"><div><strong class="mono">POST /api/payment</strong><div class="repo-meta"><span>8.01s</span><span>upstream timeout</span></div></div>${status('failed','504')}</div></div>`,
-      Database: `<pre class="code-block">orders_created = 0\ncart_id = cart_72af\ncart_items = 3\ncart_state = ACTIVE\nmutation_after_timeout = none</pre>`,
-      Code: `<pre class="code-block"><span class="diff-neutral">src/services/payment.ts:84</span>\n<span class="diff-neutral">try { await processPayment() }</span>\n<span class="diff-remove">catch (error) { /* swallowed */ }</span>\n<span class="diff-neutral">// checkout state remains PROCESSING</span></pre>`,
-      Timeline: `<div class="timeline">${C.DEMO_DATA.timeline.map(([time,label,kind],i) => `<div class="timeline-row" style="--i:${i}"><div class="time">${time}</div><div class="event-dot ${kind}"></div><div>${label}</div></div>`).join('')}</div>`
-    };
-    return views[state.evidenceTab] || views.Summary;
-  }
-
-  function renderFinding() {
-    const f = C.DEMO_DATA.finding;
-    return `${appHeader()}<div class="page compact"><div class="issue-header"><div><div class="eyebrow">Finding · ${f.requirement}</div><h2>Payment timeout leaves checkout stuck</h2><div class="issue-meta"><span>Status: <strong>${f.status}</strong></span><span>Severity: <strong>${f.severity}</strong></span><span>First detected: <span class="mono">14:32:52</span></span><span>Commit: <span class="mono">9f712c8</span></span></div></div><div class="actions">${status('failed','Reproducible')}<button class="btn" data-nav="results">Back to results</button></div></div>
-      <div class="tabs" role="tablist" aria-label="Evidence views">${evidenceTabs.map(tab => `<button class="tab ${state.evidenceTab === tab ? 'active' : ''}" data-evidence-tab="${tab}" role="tab" aria-selected="${state.evidenceTab === tab}">${tab}</button>`).join('')}</div>
-      <div class="evidence-view">${renderEvidenceContent()}</div>
-      <section class="section"><div class="section-head"><div><div class="eyebrow">Investigation</div><h2>Root cause investigation</h2></div>${status('verified','Root cause confirmed')}</div><div class="investigation"><div class="investigation-row"><div class="investigation-label">Hypothesis</div><div>Payment request timeout is not handled.</div></div><div class="investigation-row"><div class="investigation-label">Tested</div><div>Force the request to exceed the 8-second deadline.</div></div><div class="investigation-row"><div class="investigation-label">Confirmed</div><div>Frontend Promise never enters recovery state after provider timeout.</div></div><div class="investigation-row"><div class="investigation-label">Source</div><div class="mono">src/services/payment.ts:84</div></div><div class="investigation-row"><div class="investigation-label confirmed">Root cause confirmed</div><div>${f.rootCause}</div></div></div></section>
-      <div class="section actions" style="justify-content:flex-end">${button('Generate repair','repair','primary')}</div>
-    </div>`;
-  }
-
-  function renderRepair() {
-    return `${appHeader()}<div class="page compact"><div class="eyebrow">Repair · R-03</div><h2>Proposed Fix</h2><p class="muted">This patch adds timeout handling and restores checkout state when the payment service fails.</p>
-      <div class="repair-layout section"><div><pre class="code-block"><span class="diff-neutral">try {</span>\n<span class="diff-neutral">  await processPayment()</span>\n<span class="diff-neutral">} catch (error) {</span>\n<span class="diff-add">+ setCheckoutState("failed")</span>\n<span class="diff-add">+ restoreCart()</span>\n<span class="diff-add">+ showPaymentError()</span>\n<span class="diff-neutral">}</span></pre><div class="tiny muted" style="margin-top:8px">Patch target: <span class="mono">src/services/payment.ts:84–91</span></div></div><div class="card pad-lg"><h3>Safe repair workflow</h3><div class="safety-list"><div class="safety-item"><span class="check">✓</span><div><strong>Create branch</strong><div class="tiny muted mono">verifiai/fix-payment-timeout</div></div></div><div class="safety-item"><span class="check">✓</span><div><strong>Rebuild in isolation</strong><div class="tiny muted">Production is not modified.</div></div></div><div class="safety-item"><span class="check">✓</span><div><strong>Replay original failure</strong><div class="tiny muted">Same 8-second latency experiment.</div></div></div><div class="safety-item"><span class="check">✓</span><div><strong>Run regressions</strong><div class="tiny muted">Affected verification suite only.</div></div></div></div></div></div>
-      <div class="section actions" style="justify-content:flex-end"><button class="btn ghost" data-action="toast" data-message="Repair rejected. No code was changed.">Reject</button><button class="btn" data-action="toast" data-message="Draft pull request prepared for review.">Open PR</button>${button('Approve & Verify','reverify','primary')}</div>
-    </div>`;
-  }
-  function renderReverify() {
-    const steps = [
-      ['Applying fix','Branch created','100%'],
-      ['Rebuilding application','Complete','100%'],
-      ['Re-running original failure','Passed','100%'],
-      ['Running regression tests','24 / 24 complete','100%'],
-      ['Running adversarial experiments','7 / 7 complete','100%']
-    ];
-    return `${appHeader()}<div class="page narrow compact"><div class="eyebrow">Repair verification</div><h2>Re-verification</h2><p class="muted">VERIFAI is proving the repair against the same failure and the surrounding regression suite.</p><div class="progress-list section">${steps.map(([name,result,width],i) => `<div class="progress-row"><div class="progress-top"><div><strong>${name}</strong><div class="tiny muted">${i === 2 ? 'Original E-17 · payment-provider latency' : i === 3 ? 'Affected requirements only' : i === 4 ? 'Timeouts, retries, dropped connection' : 'Isolated repair environment'}</div></div>${status('verified',result)}</div><div class="progress-bar"><div class="progress-fill" style="width:${width};animation-delay:${i*.12}s"></div></div></div>`).join('')}</div><div class="section actions" style="justify-content:flex-end">${button('View verified result','verified','primary')}</div></div>`;
-  }
-
-  function renderVerified() {
-    const v = C.DEMO_DATA.verified;
-    return `${appHeader()}<div class="page narrow compact"><div class="verified-hero"><div class="verified-seal">✓</div><div class="eyebrow">Requirement R-03</div><h2 style="font-size:38px">Fix Verified</h2><p class="lede" style="margin:0 auto">The original failure could no longer be reproduced, and no regression was detected in the affected verification suite.</p></div>
-      <div class="before-after"><div class="ba-card fail"><div class="tiny muted">Before</div><h2 style="color:var(--failed);margin-top:5px">FAILED</h2><p class="small">Original reproduction<br><strong>${v.original}</strong></p></div><div class="ba-arrow">→</div><div class="ba-card ok"><div class="tiny muted">After</div><h2 style="color:var(--verified);margin-top:5px">VERIFIED</h2><p class="small">After fix<br><strong>${v.after}</strong></p></div></div>
-      <div class="summary-grid"><div class="metric"><span class="muted small">Original reproduction</span><strong>3 / 3 failed</strong></div><div class="metric"><span class="muted small">After fix</span><strong style="color:var(--verified)">10 / 10 passed</strong></div><div class="metric"><span class="muted small">Regression failures</span><strong>0</strong></div></div>
-      <div class="card pad-lg"><div class="result-head"><div><h3>Chaos experiment</h3><p class="muted small">Payment provider latency, HTTP 500, and dropped-connection cases all recover without losing the cart.</p></div>${status('verified','Passed')}</div></div>
-      <div class="section actions" style="justify-content:center"><button class="btn primary" data-action="create-pr">Create Pull Request</button>${button('View project','project','')}<button class="btn ghost" data-nav="finding">View Evidence</button></div>
-    </div>`;
-  }
-
-  function renderProjectTab() {
-    const tab = state.projectTab;
-    if (tab === 'Overview') {
-      return `<div class="project-head"><div><div class="eyebrow">Project</div><h2>my-store</h2><div class="project-meta"><span class="mono">aditya-zig / my-store</span><span>Branch: <strong>main</strong></span><span>Commit: <span class="mono">9f712c8</span></span></div></div>${button('Run Verification','plan','primary')}</div>
-        <div class="summary-grid"><div class="metric"><span class="muted small">Requirements</span><strong>24</strong></div><div class="metric"><span class="muted small">Verified</span><strong style="color:var(--verified)">20</strong></div><div class="metric"><span class="muted small">Failed / Unknown</span><strong><span style="color:var(--failed)">3</span> <span class="muted">/ 1</span></strong></div></div>
-        <div class="card pad-lg"><div class="section-head"><h3>Recent activity</h3>${status('verified','Verified')}</div><div class="activity"><div class="activity-row"><div class="activity-icon">✓</div><div><strong>Payment failure fixed</strong><div class="tiny muted">R-03 verified on repair branch</div></div><span class="tiny muted">12 minutes ago</span></div><div class="activity-row"><div class="activity-icon">V</div><div><strong>Verification completed</strong><div class="tiny muted">Affected requirements targeted</div></div><span class="tiny muted">18 minutes ago</span></div><div class="activity-row"><div class="activity-icon">C</div><div><strong>Commit detected</strong><div class="tiny muted mono">9f712c · payment-service.ts, checkout.tsx</div></div><span class="tiny muted">23 minutes ago</span></div></div></div>`;
-    }
-    if (tab === 'Requirements') {
-      return `<div class="section-head"><div><div class="eyebrow">Project</div><h2>Requirements</h2></div>${button('Run Verification','plan','primary')}</div><div class="card pad-lg"><h3>R-03 Payment resilience</h3><p class="muted">Current status: ${status('verified','VERIFIED')}</p><div class="history-row"><span class="mono tiny">a91fd2</span><span>Payment timeout reproduces</span>${status('failed','FAILED')}</div><div class="history-row"><span class="mono tiny">b721fa</span><span>Retry still leaves stale state</span>${status('failed','FAILED')}</div><div class="history-row"><span class="mono tiny">c928bb</span><span>Repair verified by replay</span>${status('verified','VERIFIED')}</div><div class="tags section"><span class="tag">payment timeout</span><span class="tag">provider HTTP 500</span><span class="tag">dropped connection</span><span class="tag">duplicate retry</span></div></div>`;
-    }
-    if (tab === 'Issues') {
-      return `<div class="section-head"><div><div class="eyebrow">Project</div><h2>Issues</h2></div></div><div class="result-row verified"><div class="result-head"><div><strong>Payment timeout leaves checkout stuck</strong><div class="tiny muted">Resolved by verified repair</div></div><button class="btn sm" data-nav="finding">View evidence</button></div></div>`;
-    }
-    if (tab === 'Evidence') {
-      return `<div class="section-head"><div><div class="eyebrow">Project</div><h2>Evidence</h2></div></div><div class="card pad-lg"><p>Stored evidence from run <span class="mono">#482</span>.</p><div class="tags"><span class="tag">Screenshot</span><span class="tag">Logs</span><span class="tag">Trace</span><span class="tag">Network</span><span class="tag">Database</span><span class="tag">Code</span></div><div class="section"><button class="btn" data-nav="finding">Open finding evidence</button></div></div>`;
-    }
-    if (tab === 'Runs') {
-      return `<div class="section-head"><div><div class="eyebrow">Project</div><h2>Runs</h2></div>${button('Run Verification','plan','primary')}</div><div class="card flat"><div class="repo-row"><div><strong>Run #482</strong><div class="repo-meta"><span class="mono">9f712c8</span><span>18 minutes ago</span></div></div>${status('verified','Completed')}</div><div class="repo-row"><div><strong>Run #481</strong><div class="repo-meta"><span class="mono">b721fa0</span><span>Yesterday</span></div></div>${status('failed','Issues Found')}</div></div>`;
-    }
-    if (tab === 'Environments') {
-      return `<div class="section-head"><div><div class="eyebrow">Project</div><h2>Environments</h2></div></div><div class="card pad-lg"><div class="detect-item"><div><div class="detect-label">Primary verification environment</div><div class="detect-value">Docker · Node.js · PostgreSQL</div></div>${status('verified','Healthy')}</div><div class="tiny muted section">Secrets are stored securely and never re-displayed.</div></div>`;
-    }
-    if (tab === 'Integrations') {
-      return `<div class="section-head"><div><div class="eyebrow">Project</div><h2>Integrations</h2></div></div><div class="card pad-lg"><div class="detect-item"><div><div class="detect-label">Source control</div><div class="detect-value">GitHub · aditya-zig / my-store</div></div>${status('verified','Connected')}</div></div>`;
-    }
-    return `<div class="section-head"><div><div class="eyebrow">Project</div><h2>Settings</h2></div></div><div class="card pad-lg"><h3>Project configuration</h3><div class="form-row"><div class="label">Default branch</div><input class="input" value="main"></div><div class="form-row"><div class="label">Verification trigger</div><select class="select"><option>Target affected requirements on new commits</option></select></div></div>`;
-  }
-
-  function renderProject() {
-    return `${appHeader()}<div class="workspace">${projectSidebar(state.projectTab)}<section class="workspace-main"><div class="page compact">${renderProjectTab()}</div></section></div>`;
   }
 
   const renderers = {
@@ -1030,18 +863,7 @@ regressions: 0</code></pre>
     login: renderLogin,
     dashboard: renderDashboard,
     repository: renderRepository,
-    analysis: renderAnalysis,
-    environment: renderEnvironment,
-    requirements: renderRequirements,
-    parsed: renderParsed,
-    plan: renderPlan,
-    live: renderLive,
-    results: renderResults,
-    finding: renderFinding,
-    repair: renderRepair,
-    reverify: renderReverify,
-    verified: renderVerified,
-    project: renderProject
+    audit: renderAuditWorkspace
   };
 
   function navigate(screen, push = true) {
@@ -1060,12 +882,12 @@ regressions: 0</code></pre>
   }
 
   const flowMessages = [
-    'Connecting repository…',
-    'Turning requirements into executable checks…',
-    'Starting the isolated application…',
-    'Running controlled failure experiment…',
-    'Collecting reproducible evidence…',
-    'Repair replay passed · requirement VERIFIED'
+    'Connect a repository…',
+    'Plan only applicable checks…',
+    'Launch isolated workers…',
+    'Collect executed evidence…',
+    'Classify uncertainty honestly…',
+    'Keep repair and PR behind verification'
   ];
 
   function startLandingFlow() {
@@ -1241,6 +1063,14 @@ regressions: 0</code></pre>
       }
       if (!meResponse.ok) throw new Error(`Authentication check failed (HTTP ${meResponse.status})`);
       const me = await meResponse.json();
+      const productionAuthOnly = location.hostname !== 'localhost' && location.hostname !== '127.0.0.1';
+      if (productionAuthOnly) {
+        const provider = me.provider === 'github' ? 'GitHub' : 'Google';
+        const identity = me.user?.name || me.user?.login || me.user?.email || 'Signed-in user';
+        list.innerHTML = `<div class="repo-row"><div><div class="repo-name">Signed in with ${provider}</div><div class="repo-meta"><span>${escapeHtml(identity)}</span><span>Authentication is live. Repository functionality is not enabled in this production demo.</span></div></div><button class="btn sm" data-action="logout">Log out</button></div>`;
+        search?.closest('div')?.setAttribute('hidden', '');
+        return;
+      }
       if (!me.githubConnected) {
         list.innerHTML = '<div class="repo-row"><div><div class="repo-name">Connect GitHub to load your repositories</div><div class="repo-meta"><span>You are signed in, but repository access still needs GitHub.</span></div></div><button class="btn primary sm" data-action="github-oauth">Connect GitHub</button></div>';
         return;
@@ -1273,7 +1103,7 @@ regressions: 0</code></pre>
       C.DEMO_DATA.project.repo = project.repository.fullName;
       C.DEMO_DATA.project.branch = project.branch;
       C.DEMO_DATA.project.commit = project.commitSha.slice(0, 7);
-      navigate('analysis');
+      navigate('audit');
     } catch (error) {
       showToast(`Import failed: ${String(error?.message || error)}`);
       buttonEl.disabled = false;
@@ -1295,6 +1125,17 @@ regressions: 0</code></pre>
   }
 
   document.addEventListener('click', (event) => {
+    const auditTrigger = event.target.closest('[data-audit-trigger]');
+    if (auditTrigger) {
+      event.preventDefault();
+      const drawer = document.getElementById('drawer');
+      const repoInput = document.getElementById('repoInput');
+      if (repoInput && C.DEMO_DATA.project.repo) repoInput.value = C.DEMO_DATA.project.repo;
+      drawer?.classList.add('open');
+      drawer?.setAttribute('aria-hidden', 'false');
+      setTimeout(() => repoInput?.focus(), 80);
+      return;
+    }
     const importRepo = event.target.closest('[data-import-repo]');
     if (importRepo) {
       event.preventDefault();
@@ -1372,20 +1213,7 @@ regressions: 0</code></pre>
 })();
 </script>
 
-<div hidden aria-hidden="true" id="deepAuditCompatibility">
-  <button data-audit-trigger type="button">Audit your repo</button>
-  <div id="drawer">
-    <button id="closeDrawer" type="button">Close</button>
-    <button id="backdrop" type="button">Backdrop</button>
-    <input id="repoInput" value="github.com/aditya-zig/AWS-wemakedevs">
-    <input id="deployedUrlInput">
-    <input id="installableAppInput">
-    <input id="tempTokenInput">
-    <button id="drawerRun" type="button">Run Deep Audit</button>
-    <div id="progress"><div></div><div></div><div></div><div></div></div>
-    <div id="drawerResult"></div>
-  </div>
-</div>
+<div class="drawer" id="drawer" aria-hidden="true"><button class="backdrop" id="backdrop" aria-label="Close"></button><aside role="dialog" aria-modal="true" aria-labelledby="drawerTitle"><button class="x" id="closeDrawer" aria-label="Close">×</button><div class="eyebrow">Start Deep Audit</div><h2 id="drawerTitle">Audit a repository</h2><label for="repoInput">GitHub repository</label><div class="repo-input"><input id="repoInput" placeholder="github.com/owner/repo" autocomplete="url"><button class="btn primary" id="drawerRun">Run Deep Audit</button></div><div class="audit-options"><label for="deployedUrlInput">Deployed URL <small>optional</small></label><input id="deployedUrlInput" placeholder="https://staging.example.com" autocomplete="url"><label for="installableAppInput">Installable app <small>optional</small></label><input id="installableAppInput" placeholder="https://…/app.apk" autocomplete="url"><label for="tempTokenInput">Temporary test credential <small>optional</small></label><input id="tempTokenInput" type="password" placeholder="Expires with this run" autocomplete="off"></div><p class="note"><strong>Deep Audit is the default.</strong> Repository is the primary input. Optional URL, app and credentials expand coverage. Credentials are ephemeral and redacted from evidence.</p><div class="progress" id="progress"><div><span>1</span><b>Repository connected</b><small>Ready</small></div><div><span>2</span><b>Discovery</b><small>Waiting</small></div><div><span>3</span><b>Deep Audit</b><small>Waiting</small></div><div><span>4</span><b>Evidence report</b><small>Waiting</small></div></div><div id="drawerResult"></div></aside></div>
 <script type="module" src="./app.js"></script>
 </body>
 </html>
