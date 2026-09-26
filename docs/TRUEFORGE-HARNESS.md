@@ -63,6 +63,14 @@ Check:
 curl -fsS http://127.0.0.1:8790/healthz
 ```
 
+After the VERIFAI environment variables are set, run the no-generation preflight:
+
+```bash
+npm run verify:trueforge
+```
+
+It verifies harness selection, required model name, TrueForge reachability and auth mode without making a model generation request.
+
 In TrueForge:
 
 1. Open Settings -> Models.
