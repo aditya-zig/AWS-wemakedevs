@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { once } from 'node:events';
 import {
   AGENT_WORKER_CONTRACT_VERSION,
   type AgentWorkerLaunchBrief,
@@ -11,15 +10,17 @@ import { TrueForgeWorkerLauncher } from '../services/trueforge/worker-launcher.j
 import { createTrueForgePlanningAgent } from '../services/orchestrator/trueforge-planner.js';
 
 async function startFakeTrueForge(handler: (req: http.IncomingMessage, body: string) => { status?: number; headers?: Record<string, string>; body?: string }) {
-  const server = http.createServer(async (req, res) => {
-    const chunks: Buffer[] = [];
+  const server = http.createServer(async (req: any, res: any) => {
+    const chunks: any[] = [];
     for await (const chunk of req) chunks.push(Buffer.from(chunk));
     const output = handler(req, Buffer.concat(chunks).toString('utf8'));
     res.writeHead(output.status ?? 200, output.headers ?? { 'content-type': 'application/json' });
     res.end(output.body ?? '');
   });
-  server.listen(0, '127.0.0.1');
-  await once(server, 'listening');
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => resolve());
+  });
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('fake TrueForge server did not bind');
   return {
@@ -32,7 +33,7 @@ function sse(events: any[]): string {
   return events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join('');
 }
 
-test('TrueForge client creates a session and consumes a terminal SSE turn', async (t) => {
+test('TrueForge client creates a session and consumes a terminal SSE turn', async () => {
   const fake = await startFakeTrueForge((req) => {
     if (req.method === 'GET' && req.url === '/healthz') return { body: JSON.stringify({ ok: true }) };
     if (req.method === 'POST' && req.url === '/api/v1/sessions') {
@@ -50,7 +51,7 @@ test('TrueForge client creates a session and consumes a terminal SSE turn', asyn
     }
     return { status: 404, body: JSON.stringify({ error: 'not found' }) };
   });
-  t.after(() => fake.server.close());
+
 
   const client = new TrueForgeHarnessClient({ baseUrl: fake.baseUrl, timeoutMs: 5_000 });
   await client.health();
@@ -63,9 +64,10 @@ test('TrueForge client creates a session and consumes a terminal SSE turn', asyn
   assert.equal(result.status, 'done');
   assert.equal(result.turnId, 'turn-1');
   assert.equal(result.answer, '{"ok":true}');
+  await new Promise<void>((resolve) => fake.server.close(() => resolve()));
 });
 
-test('TrueForge planner returns only validated VERIFAI worker roles', async (t) => {
+test('TrueForge planner returns only validated VERIFAI worker roles', async () => {
   const fake = await startFakeTrueForge((req) => {
     if (req.method === 'GET' && req.url === '/healthz') return { body: JSON.stringify({ ok: true }) };
     if (req.method === 'POST' && req.url === '/api/v1/sessions') {
@@ -93,7 +95,7 @@ test('TrueForge planner returns only validated VERIFAI worker roles', async (t) 
     }
     return { status: 404, body: JSON.stringify({ error: 'not found' }) };
   });
-  t.after(() => fake.server.close());
+
 
   const { planner, modelProfileId } = await createTrueForgePlanningAgent({
     baseUrl: fake.baseUrl,
@@ -115,9 +117,10 @@ test('TrueForge planner returns only validated VERIFAI worker roles', async (t) 
     availableRoles: ['browser-app-user', 'performance-discovery'],
   });
   assert.deepEqual(workers, [{ role: 'browser-app-user', objective: 'Exercise the user journey', mandatory: true }]);
+  await new Promise<void>((resolve) => fake.server.close(() => resolve()));
 });
 
-test('TrueForge worker only keeps Confirmed when executed failing evidence exists', async (t) => {
+test('TrueForge worker only keeps Confirmed when executed failing evidence exists', async () => {
   const fake = await startFakeTrueForge((req) => {
     if (req.method === 'POST' && req.url === '/api/v1/sessions') {
       return { body: JSON.stringify({ data: { id: 'worker-session' } }) };
@@ -160,7 +163,7 @@ test('TrueForge worker only keeps Confirmed when executed failing evidence exist
     }
     return { status: 404, body: JSON.stringify({ error: 'not found' }) };
   });
-  t.after(() => fake.server.close());
+
 
   const brief: AgentWorkerLaunchBrief = {
     contractVersion: AGENT_WORKER_CONTRACT_VERSION,
@@ -199,4 +202,5 @@ test('TrueForge worker only keeps Confirmed when executed failing evidence exist
   assert.equal(report.evidence.length, 1);
   assert.equal(report.evidence[0]?.source, 'test-engine');
   assert.ok(events.some((event) => event.type === 'worker.evidence'));
+  await new Promise<void>((resolve) => fake.server.close(() => resolve()));
 });
