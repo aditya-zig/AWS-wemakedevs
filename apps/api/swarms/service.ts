@@ -5,6 +5,7 @@ import type {
 } from '../../../packages/contracts/src/index.js';
 import { AgentCoreWorkerLauncher } from '../../../services/agent-runtime/agentcore-launcher.js';
 import { DockerWorkerLauncher } from '../../../services/agent-runtime/docker-launcher.js';
+import { TrueForgeWorkerLauncher } from '../../../services/trueforge/worker-launcher.js';
 import { buildSpecialistPolicy } from '../../../services/agents/specialist-policy.js';
 import {
   createStrandsPlanningAgent,
@@ -12,6 +13,7 @@ import {
   type AuditRunResult,
   type LiveSwarmState,
 } from '../../../services/orchestrator/strands-orchestrator.js';
+import { createTrueForgePlanningAgent } from '../../../services/orchestrator/trueforge-planner.js';
 
 export interface LiveAuditStartInput {
   repository: AuditRepositoryFacts;
@@ -46,6 +48,16 @@ interface InternalRecord {
   run: Promise<void>;
 }
 
+function agentHarness(env: Record<string, string | undefined>): 'trueforge' | 'strands' {
+  const harness = env.VERIFIAI_AGENT_HARNESS ?? 'trueforge';
+  if (harness !== 'trueforge' && harness !== 'strands') throw new Error('VERIFIAI_AGENT_HARNESS must be trueforge or strands');
+  return harness;
+}
+
+function csv(value: string | undefined): string[] {
+  return (value ?? '').split(',').map((item) => item.trim()).filter(Boolean);
+}
+
 function executionMode(env: Record<string, string | undefined>): 'local' | 'agentcore' {
   const mode = env.VERIFIAI_EXECUTION_MODE ?? 'local';
   if (mode !== 'local' && mode !== 'agentcore') throw new Error('VERIFIAI_EXECUTION_MODE must be local or agentcore');
@@ -64,13 +76,21 @@ export class LiveAuditService {
 
   async start(input: LiveAuditStartInput): Promise<LiveAuditRecord> {
     const mode = executionMode(this.env);
-    const { planner, modelProfileId } = await createStrandsPlanningAgent({
-      provider: this.env.VERIFIAI_MODEL_PROVIDER as any,
-      modelId: this.env.VERIFIAI_MODEL_ID,
-      baseUrl: this.env.VERIFIAI_MODEL_BASE_URL,
-      awsSecretId: this.env.VERIFIAI_MODEL_SECRET_ID,
-      awsSecretField: this.env.VERIFIAI_MODEL_SECRET_FIELD,
-    });
+    const harness = agentHarness(this.env);
+    const { planner, modelProfileId } = harness === 'trueforge'
+      ? await createTrueForgePlanningAgent({
+          baseUrl: this.env.VERIFIAI_TRUEFORGE_BASE_URL,
+          token: this.env.VERIFIAI_TRUEFORGE_TOKEN,
+          model: this.env.VERIFIAI_TRUEFORGE_MODEL ?? '',
+          timeoutMs: Number(this.env.VERIFIAI_TRUEFORGE_TIMEOUT_MS ?? 180_000),
+        })
+      : await createStrandsPlanningAgent({
+          provider: this.env.VERIFIAI_MODEL_PROVIDER as any,
+          modelId: this.env.VERIFIAI_MODEL_ID,
+          baseUrl: this.env.VERIFIAI_MODEL_BASE_URL,
+          awsSecretId: this.env.VERIFIAI_MODEL_SECRET_ID,
+          awsSecretField: this.env.VERIFIAI_MODEL_SECRET_FIELD,
+        });
 
     const policy = buildSpecialistPolicy({
       modelProfileId,
@@ -81,24 +101,33 @@ export class LiveAuditService {
       externalEngineUrl: this.env.VERIFIAI_EXTERNAL_ENGINE_URL,
     });
 
-    const launcher = mode === 'local'
-      ? new DockerWorkerLauncher({
-          image: this.env.VERIFIAI_LOCAL_WORKER_IMAGE,
-          cpus: Number(this.env.VERIFIAI_LOCAL_WORKER_CPUS ?? 1),
-          memory: this.env.VERIFIAI_LOCAL_WORKER_MEMORY ?? '1024m',
-          pidsLimit: Number(this.env.VERIFIAI_LOCAL_WORKER_PIDS ?? 256),
-          network: this.env.VERIFIAI_LOCAL_WORKER_NETWORK ?? 'bridge',
-          env: this.env,
+    const launcher = harness === 'trueforge'
+      ? new TrueForgeWorkerLauncher({
+          baseUrl: this.env.VERIFIAI_TRUEFORGE_BASE_URL,
+          token: this.env.VERIFIAI_TRUEFORGE_TOKEN,
+          mcpServers: csv(this.env.VERIFIAI_TRUEFORGE_MCP_SERVERS),
+          requireApprovalForTools: csv(this.env.VERIFIAI_TRUEFORGE_REQUIRE_APPROVAL_FOR_TOOLS ?? '@destructive'),
+          sandboxEnabled: this.env.VERIFIAI_TRUEFORGE_SANDBOX === 'true',
+          timeoutMs: Number(this.env.VERIFIAI_TRUEFORGE_TIMEOUT_MS ?? 180_000),
         })
-      : new AgentCoreWorkerLauncher({
-          defaultRuntime: {
-            region: this.env.AWS_REGION ?? 'ap-south-1',
-            runtimeArn: this.env.VERIFIAI_AGENTCORE_RUNTIME_ARN ?? '',
-          },
-        });
+      : mode === 'local'
+        ? new DockerWorkerLauncher({
+            image: this.env.VERIFIAI_LOCAL_WORKER_IMAGE,
+            cpus: Number(this.env.VERIFIAI_LOCAL_WORKER_CPUS ?? 1),
+            memory: this.env.VERIFIAI_LOCAL_WORKER_MEMORY ?? '1024m',
+            pidsLimit: Number(this.env.VERIFIAI_LOCAL_WORKER_PIDS ?? 256),
+            network: this.env.VERIFIAI_LOCAL_WORKER_NETWORK ?? 'bridge',
+            env: this.env,
+          })
+        : new AgentCoreWorkerLauncher({
+            defaultRuntime: {
+              region: this.env.AWS_REGION ?? 'ap-south-1',
+              runtimeArn: this.env.VERIFIAI_AGENTCORE_RUNTIME_ARN ?? '',
+            },
+          });
 
-    if (mode === 'agentcore' && !this.env.VERIFIAI_AGENTCORE_RUNTIME_ARN) {
-      throw new Error('VERIFIAI_AGENTCORE_RUNTIME_ARN is required in agentcore mode');
+    if (harness === 'strands' && mode === 'agentcore' && !this.env.VERIFIAI_AGENTCORE_RUNTIME_ARN) {
+      throw new Error('VERIFIAI_AGENTCORE_RUNTIME_ARN is required for Strands AgentCore mode');
     }
 
     const orchestrator = new EphemeralStrandsOrchestrator(planner, launcher, {
