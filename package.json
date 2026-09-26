@@ -21,7 +21,8 @@
     "verify:local-worker": "npm run build && node scripts/verify-local-worker.mjs",
     "external:up": "docker compose -f docker-compose.external.yml up --build",
     "external:down": "docker compose -f docker-compose.external.yml down --remove-orphans",
-    "start:external-engines": "node services/external-engines/server.mjs"
+    "start:external-engines": "node services/external-engines/server.mjs",
+    "verify:trueforge": "node scripts/verify-trueforge.mjs"
   },
   "devDependencies": {
     "typescript": "^5.8.3"
