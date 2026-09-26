@@ -1,6 +1,6 @@
 # VERIFAI coding-agent rules
 
-The current AWS Hackathon and **VERIFAI — Grill with Docs** Notion pages are the product/architecture source of truth. The Strands + AgentCore architecture supersedes older deterministic-agent plans.
+The current AWS Hackathon, **VERIFAI — Grill with Docs**, **VERIFAI — Master Execution & E2E Status**, and **TrueForge Harness Migration** Notion pages are the product/architecture source of truth. On branch `trueforge-harness-migration`, TrueForge is the target agent harness. Strands + AgentCore remain only as a temporary rollback path until TrueForge reaches tool/evidence parity and passes the local E2E gate.
 
 ## External engines: upstream-first, no substitutes
 
@@ -22,3 +22,15 @@ When a task names MiroFish, Strix, Cua, Browser Use, OWASP ZAP, Schemathesis, Lo
 The legacy deterministic Deep Audit contains synthetic/compatibility paths such as Strix/Cua fallbacks, hard-coded MiroFish persona outcomes, and in-memory chaos records. Treat these as migration debt, not valid proof that those upstream engines are integrated.
 
 New work must remove/replace those paths, not build more features on top of them.
+
+
+## TrueForge migration rules
+
+1. Do not modify or rebase the friend's active local E2E checkout from this branch.
+2. Default `VERIFIAI_AGENT_HARNESS=trueforge` on this migration branch. Use `strands` only to compare behavior or unblock rollback.
+3. TrueForge owns the model/agent loop. VERIFAI keeps repository/target lifecycle, guardrails, evidence normalization, authorization, external-engine truthfulness and audit UI contracts.
+4. Model/API credentials configured in TrueForge stay in TrueForge. Do not duplicate those secrets into VERIFAI unless an external engine independently requires them.
+5. Attach only explicitly named TrueForge MCP connectors. Destructive tools require approval by default.
+6. A TrueForge tool event is not automatically a confirmed finding. VERIFAI may mark a finding Confirmed only when executed evidence demonstrates failure.
+7. The remaining parity blocker is the VERIFAI tool bridge: Browser Use/Cua/k6/Strix/etc. must be exposed to TrueForge through scoped MCP connectors or equivalent real upstream interfaces. Until then those lanes are Incomplete, never silently simulated.
+8. Remove `@strands-agents/sdk`, Strands worker runtime code and AgentCore worker-only infrastructure only after two complete UI audits pass on the TrueForge path and the rollback branch/tag is recorded.
